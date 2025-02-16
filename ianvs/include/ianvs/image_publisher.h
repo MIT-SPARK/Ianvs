@@ -10,15 +10,17 @@ namespace ianvs {
 
 class ImagePublisher {
  public:
-  using Interface = rclcpp::node_interfaces::NodeInterfaces<
-      rclcpp::node_interfaces::NodeTopicsInterface,
-      rclcpp::node_interfaces::NodeParametersInterface>;
+  using NodeInterface = rclcpp::node_interfaces::NodeInterfaces<
+      rclcpp::node_interfaces::NodeParametersInterface,
+      rclcpp::node_interfaces::NodeTopicsInterface>;
 
   ImagePublisher();
-  ImagePublisher(Interface node,
+  ImagePublisher(NodeInterface node,
                  const std::string& topic,
                  const rclcpp::QoS& qos = rclcpp::SensorDataQoS());
   ~ImagePublisher();
+  ImagePublisher(ImagePublisher&& other);
+  ImagePublisher& operator=(ImagePublisher&& other);
 
   void publish(const sensor_msgs::msg::Image& msg) const;
 

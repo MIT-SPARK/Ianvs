@@ -5,7 +5,7 @@
 namespace ianvs {
 
 struct ImagePublisher::Impl {
-  Impl(Interface node, const std::string& topic, const rclcpp::QoS& qos) {
+  Impl(NodeInterface node, const std::string& topic, const rclcpp::QoS& qos) {
     pub = rclcpp::create_publisher<sensor_msgs::msg::Image>(node, topic, qos);
   }
 
@@ -20,12 +20,21 @@ struct ImagePublisher::Impl {
 
 ImagePublisher::ImagePublisher() = default;
 
-ImagePublisher::ImagePublisher(Interface node,
+ImagePublisher::ImagePublisher(NodeInterface node,
                                const std::string& topic,
                                const rclcpp::QoS& qos)
     : impl_(std::make_unique<Impl>(node, topic, qos)) {}
 
 ImagePublisher::~ImagePublisher() = default;
+
+ImagePublisher::ImagePublisher(ImagePublisher&& other) {
+  impl_ = std::move(other.impl_);
+}
+
+ImagePublisher& ImagePublisher::operator=(ImagePublisher&& other) {
+  impl_ = std::move(other.impl_);
+  return *this;
+}
 
 void ImagePublisher::publish(const sensor_msgs::msg::Image& msg) const {
   if (impl_) {
