@@ -1,0 +1,12 @@
+name: Ianvs Linting
+run-name: Ianvs Linting
+on: push
+jobs:
+  Ianvs Linting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with: {path: ianvs}
+      - name: Pre-commit
+        run: pip install pre-commit && cd ${{ github.workspace }}/ianvs && pre-commit run --all-files
