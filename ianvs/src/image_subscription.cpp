@@ -14,6 +14,8 @@ struct ImageSubscription::Impl {
   rclcpp::Subscription<Image>::SharedPtr sub;
 };
 
+ImageSubscription::ImageSubscription() = default;
+
 ImageSubscription::ImageSubscription(NodeHandle::NodeInterface nh,
                                      const std::string& topic,
                                      const rclcpp::QoS& qos)

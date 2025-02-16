@@ -9,7 +9,7 @@ namespace ianvs {
 
 class ImagePublisher {
  public:
-  ImagePublisher() = default;
+  ImagePublisher();
   ImagePublisher(NodeHandle::NodeInterface nh,
                  const std::string& topic,
                  const rclcpp::QoS& qos = rclcpp::SensorDataQoS());

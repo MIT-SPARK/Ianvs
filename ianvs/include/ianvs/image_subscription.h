@@ -12,7 +12,7 @@ namespace ianvs {
 class ImageSubscription
     : public message_filters::SimpleFilter<sensor_msgs::msg::Image> {
  public:
-  ImageSubscription() = default;
+  ImageSubscription();
   ImageSubscription(NodeHandle::NodeInterface nh,
                     const std::string& topic,
                     const rclcpp::QoS& qos = rclcpp::SensorDataQoS());

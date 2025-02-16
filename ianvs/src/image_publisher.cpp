@@ -16,6 +16,8 @@ struct ImagePublisher::Impl {
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub;
 };
 
+ImagePublisher::ImagePublisher() = default;
+
 ImagePublisher::ImagePublisher(NodeHandle::NodeInterface nh,
                                const std::string& topic,
                                const rclcpp::QoS& qos)
