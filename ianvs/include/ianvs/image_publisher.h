@@ -1,16 +1,21 @@
 #pragma once
 #include <memory>
 
+#include <rclcpp/node_interfaces/node_interfaces.hpp>
+#include <rclcpp/node_interfaces/node_parameters_interface.hpp>
+#include <rclcpp/node_interfaces/node_topics_interface.hpp>
 #include <sensor_msgs/msg/image.hpp>
-
-#include "ianvs/node_handle.h"
 
 namespace ianvs {
 
 class ImagePublisher {
  public:
+  using Interface = rclcpp::node_interfaces::NodeInterfaces<
+      rclcpp::node_interfaces::NodeTopicsInterface,
+      rclcpp::node_interfaces::NodeParametersInterface>;
+
   ImagePublisher();
-  ImagePublisher(NodeHandle::NodeInterface nh,
+  ImagePublisher(Interface node,
                  const std::string& topic,
                  const rclcpp::QoS& qos = rclcpp::SensorDataQoS());
   ~ImagePublisher();
