@@ -9,7 +9,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-option(BUIlD_SHARED_LIBS "Build shared libraries" ON)
+option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(message_filters REQUIRED)
@@ -18,8 +18,9 @@ find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 add_library(
-  ${PROJECT_NAME} src/image_publisher.cpp src/image_subscription.cpp src/node_handle.cpp
-                  src/node_handle_factory.cpp src/spin_functions.cpp
+  ${PROJECT_NAME}
+  src/image_publisher.cpp src/image_subscription.cpp src/node_handle.cpp
+  src/node_handle_factory.cpp src/spin_functions.cpp
 )
 add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_link_libraries(
@@ -31,6 +32,9 @@ target_include_directories(
 )
 target_compile_definitions(${PROJECT_NAME} PRIVATE "${PROJECT_NAME}_BUILDING_LIBRARY")
 ament_target_dependencies(${PROJECT_NAME} PUBLIC sensor_msgs std_srvs)
+if(NOT BUILD_SHARED_LIBS)
+  set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
+endif()
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
