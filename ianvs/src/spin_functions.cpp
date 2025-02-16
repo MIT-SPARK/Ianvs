@@ -39,8 +39,11 @@
 
 namespace ianvs {
 
-struct ServiceFunctor {
-  ServiceFunctor() : should_exit(false) {}
+struct ShutdownMonitor {
+  explicit ShutdownMonitor(NodeHandle nh)
+      : should_exit(false),
+        service(nh.create_service<std_srvs::srv::Empty>(
+            "shutdown", &ShutdownMonitor::callback, this)) {}
 
   void callback(const std_srvs::srv::Empty::Request::SharedPtr&,
                 std_srvs::srv::Empty::Response::SharedPtr) {
@@ -48,6 +51,7 @@ struct ServiceFunctor {
   }
 
   bool should_exit;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr service;
 };
 
 bool haveClock(NodeHandle nh) {
@@ -56,9 +60,7 @@ bool haveClock(NodeHandle nh) {
 }
 
 void spinWhileClockPresent(NodeHandle nh) {
-  ServiceFunctor functor;
-  auto service = nh.createService<std_srvs::srv::Empty>(
-      "shutdown", &ServiceFunctor::callback, &functor);
+  ShutdownMonitor functor(nh);
 
   rclcpp::WallRate r(50);
   auto base = nh.node().get<rclcpp::node_interfaces::NodeBaseInterface>();
@@ -80,9 +82,7 @@ void spinWhileClockPresent(NodeHandle nh) {
 }
 
 void spinUntilExitRequested(NodeHandle nh) {
-  ServiceFunctor functor;
-  auto service = nh.createService<std_srvs::srv::Empty>(
-      "shutdown", &ServiceFunctor::callback, &functor);
+  ShutdownMonitor functor(nh);
 
   rclcpp::WallRate r(50);
   auto base = nh.node().get<rclcpp::node_interfaces::NodeBaseInterface>();

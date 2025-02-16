@@ -18,10 +18,8 @@
 
 namespace ianvs {
 
-namespace rclcpp_interfaces = rclcpp::node_interfaces;
-
-HYDRA_ROS_UTILS_PUBLIC std::string joinNamespace(const std::string& ns,
-                                                 const std::string& topic);
+IANVS_PUBLIC std::string join_namespace(const std::string& ns,
+                                        const std::string& topic);
 
 class NodeHandle {
  public:
@@ -36,14 +34,14 @@ class NodeHandle {
   using GroupPtr = rclcpp::CallbackGroup::SharedPtr;
 
   // TODO(nathan) this is really only one or two interfaces away from using all of them
-  using NodeInterface =
-      rclcpp_interfaces::NodeInterfaces<rclcpp_interfaces::NodeBaseInterface,
-                                        rclcpp_interfaces::NodeClockInterface,
-                                        rclcpp_interfaces::NodeLoggingInterface,
-                                        rclcpp_interfaces::NodeGraphInterface,
-                                        rclcpp_interfaces::NodeTopicsInterface,
-                                        rclcpp_interfaces::NodeServicesInterface,
-                                        rclcpp_interfaces::NodeParametersInterface>;
+  using NodeInterface = rclcpp::node_interfaces::NodeInterfaces<
+      rclcpp::node_interfaces::NodeBaseInterface,
+      rclcpp::node_interfaces::NodeClockInterface,
+      rclcpp::node_interfaces::NodeLoggingInterface,
+      rclcpp::node_interfaces::NodeGraphInterface,
+      rclcpp::node_interfaces::NodeTopicsInterface,
+      rclcpp::node_interfaces::NodeServicesInterface,
+      rclcpp::node_interfaces::NodeParametersInterface>;
 
   NodeHandle(NodeInterface node, const std::string& ns = "");
   NodeHandle& operator/=(const std::string& ns);
@@ -53,36 +51,36 @@ class NodeHandle {
   const std::string& ns() const { return ns_; }
 
   template <typename T>
-  Publisher<T> createPublisher(const std::string& topic, const rclcpp::QoS& qos);
+  Publisher<T> create_publisher(const std::string& topic, const rclcpp::QoS& qos);
 
   template <typename T, typename CallbackT>
-  Subscription<T> createSubscription(const std::string& topic,
-                                     const rclcpp::QoS& qos,
-                                     CallbackT&& callback);
+  Subscription<T> create_subscription(const std::string& topic,
+                                      const rclcpp::QoS& qos,
+                                      CallbackT&& callback);
 
   template <typename T, typename CallbackT, typename Cls>
-  Subscription<T> createSubscription(const std::string& topic,
-                                     const rclcpp::QoS& qos,
-                                     CallbackT&& callback,
-                                     Cls* class_pointer);
+  Subscription<T> create_subscription(const std::string& topic,
+                                      const rclcpp::QoS& qos,
+                                      CallbackT&& callback,
+                                      Cls* class_pointer);
 
   template <typename T, typename CallbackT>
-  Service<T> createService(const std::string& service_name,
-                           CallbackT&& callback,
-                           const rclcpp::QoS& qos = rclcpp::ServicesQoS(),
-                           GroupPtr group = nullptr);
+  Service<T> create_service(const std::string& service_name,
+                            CallbackT&& callback,
+                            const rclcpp::QoS& qos = rclcpp::ServicesQoS(),
+                            GroupPtr group = nullptr);
 
   template <typename T, typename CallbackT, typename Cls>
-  Service<T> createService(const std::string& service_name,
-                           CallbackT&& callback,
-                           Cls* class_pointer,
-                           const rclcpp::QoS& qos = rclcpp::ServicesQoS(),
-                           GroupPtr group = nullptr);
+  Service<T> create_service(const std::string& service_name,
+                            CallbackT&& callback,
+                            Cls* class_pointer,
+                            const rclcpp::QoS& qos = rclcpp::ServicesQoS(),
+                            GroupPtr group = nullptr);
 
   template <typename T>
-  Client<T> createClient(const std::string& name,
-                         const rclcpp::QoS& qos = rclcpp::ServicesQoS(),
-                         GroupPtr = nullptr);
+  Client<T> create_client(const std::string& name,
+                          const rclcpp::QoS& qos = rclcpp::ServicesQoS(),
+                          GroupPtr = nullptr);
 
   std::string resolveName(const std::string& name, bool is_service);
 
@@ -96,33 +94,33 @@ class NodeHandle {
 };
 
 template <typename T>
-typename NodeHandle::Publisher<T> NodeHandle::createPublisher(const std::string& topic,
-                                                              const rclcpp::QoS& qos) {
-  return rclcpp::create_publisher<T>(node_, joinNamespace(ns_, topic), qos);
+typename NodeHandle::Publisher<T> NodeHandle::create_publisher(const std::string& topic,
+                                                               const rclcpp::QoS& qos) {
+  return rclcpp::create_publisher<T>(node_, join_namespace(ns_, topic), qos);
 }
 
 template <typename T, typename CallbackT>
-typename NodeHandle::Subscription<T> NodeHandle::createSubscription(
+typename NodeHandle::Subscription<T> NodeHandle::create_subscription(
     const std::string& topic, const rclcpp::QoS& qos, CallbackT&& callback) {
   return rclcpp::create_subscription<T>(
-      node_, joinNamespace(ns_, topic), qos, callback);
+      node_, join_namespace(ns_, topic), qos, callback);
 }
 
 template <typename T, typename CallbackT, typename Cls>
-typename NodeHandle::Subscription<T> NodeHandle::createSubscription(
+typename NodeHandle::Subscription<T> NodeHandle::create_subscription(
     const std::string& topic,
     const rclcpp::QoS& qos,
     CallbackT&& callback,
     Cls* class_pointer) {
-  return createSubscription<T>(
+  return create_subscription<T>(
       topic, qos, std::bind(callback, class_pointer, std::placeholders::_1));
 }
 
 template <typename T, typename CallbackT>
-typename NodeHandle::Service<T> NodeHandle::createService(const std::string& name,
-                                                          CallbackT&& callback,
-                                                          const rclcpp::QoS& qos,
-                                                          GroupPtr group) {
+typename NodeHandle::Service<T> NodeHandle::create_service(const std::string& name,
+                                                           CallbackT&& callback,
+                                                           const rclcpp::QoS& qos,
+                                                           GroupPtr group) {
   // NOTE(nathan) this is necesary because (unlike pub/sub) no one has updated
   // create_service to take a single node interface argument as of iron. Ideally we'd
   // replace this once the API updates. Note that the actual node implementation will
@@ -130,17 +128,17 @@ typename NodeHandle::Service<T> NodeHandle::createService(const std::string& nam
   // and don't get added to executors by default, we're not going to support this
   auto base = node_.get<rclcpp::node_interfaces::NodeBaseInterface>();
   auto services = node_.get<rclcpp::node_interfaces::NodeServicesInterface>();
-  const auto new_name = joinNamespace(ns_, name);
+  const auto new_name = join_namespace(ns_, name);
   return rclcpp::create_service<T>(base, services, new_name, callback, qos, group);
 }
 
 template <typename T, typename CallbackT, typename Cls>
-typename NodeHandle::Service<T> NodeHandle::createService(const std::string& name,
-                                                          CallbackT&& callback,
-                                                          Cls* class_pointer,
-                                                          const rclcpp::QoS& qos,
-                                                          GroupPtr group) {
-  return createService<T>(
+typename NodeHandle::Service<T> NodeHandle::create_service(const std::string& name,
+                                                           CallbackT&& callback,
+                                                           Cls* class_pointer,
+                                                           const rclcpp::QoS& qos,
+                                                           GroupPtr group) {
+  return create_service<T>(
       name,
       std::bind(callback, class_pointer, std::placeholders::_1, std::placeholders::_2),
       qos,
@@ -148,9 +146,9 @@ typename NodeHandle::Service<T> NodeHandle::createService(const std::string& nam
 }
 
 template <typename T>
-typename NodeHandle::Client<T> NodeHandle::createClient(const std::string& name,
-                                                        const rclcpp::QoS& qos,
-                                                        GroupPtr group) {
+typename NodeHandle::Client<T> NodeHandle::create_client(const std::string& name,
+                                                         const rclcpp::QoS& qos,
+                                                         GroupPtr group) {
   // NOTE(nathan) this is necesary because (unlike pub/sub) no one has updated
   // create_client to take a single node interface argument as of iron. Ideally we'd
   // replace this once the API updates. Note that the actual node implementation will
@@ -159,12 +157,12 @@ typename NodeHandle::Client<T> NodeHandle::createClient(const std::string& name,
   auto base = node_.get<rclcpp::node_interfaces::NodeBaseInterface>();
   auto graph = node_.get<rclcpp::node_interfaces::NodeGraphInterface>();
   auto services = node_.get<rclcpp::node_interfaces::NodeServicesInterface>();
-  const auto new_name = joinNamespace(ns_, name);
+  const auto new_name = join_namespace(ns_, name);
   return rclcpp::create_client<T>(base, graph, services, new_name, qos, group);
 }
 
 inline NodeHandle operator/(const NodeHandle& nh, const std::string& ns) {
-  return NodeHandle(nh.node(), joinNamespace(nh.ns(), ns));
+  return NodeHandle(nh.node(), join_namespace(nh.ns(), ns));
 }
 
 }  // namespace ianvs

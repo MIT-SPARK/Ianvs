@@ -12,16 +12,19 @@ endif()
 option(BUIlD_SHARED_LIBS "Build shared libraries" ON)
 
 find_package(ament_cmake REQUIRED)
+find_package(message_filters REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 add_library(
-  ${PROJECT_NAME} src/node_handle.cpp src/node_handle_factory.cpp
-                  src/spin_functions.cpp
+  ${PROJECT_NAME} src/image_publisher.cpp src/image_subscription.cpp src/node_handle.cpp
+                  src/node_handle_factory.cpp src/spin_functions.cpp
 )
 add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
-target_link_libraries(${PROJECT_NAME} PUBLIC rclcpp::rclcpp)
+target_link_libraries(
+  ${PROJECT_NAME} PUBLIC message_filters::message_filters rclcpp::rclcpp
+)
 target_include_directories(
   ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                          $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
