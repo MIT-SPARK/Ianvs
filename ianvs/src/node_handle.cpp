@@ -2,7 +2,7 @@
 
 namespace ianvs {
 
-std::string joinNamespace(const std::string& ns, const std::string& topic) {
+std::string join_namespace(const std::string& ns, const std::string& topic) {
   if (topic.empty()) {
     return ns;
   }
@@ -18,11 +18,11 @@ NodeHandle::NodeHandle(NodeInterface node, const std::string& ns)
     : node_(node), ns_(ns) {}
 
 NodeHandle& NodeHandle::operator/=(const std::string& ns) {
-  ns_ = joinNamespace(ns_, ns);
+  ns_ = join_namespace(ns_, ns);
   return *this;
 }
 
-std::string NodeHandle::resolveName(const std::string& name, bool is_service) {
+std::string NodeHandle::resolve_name(const std::string& name, bool is_service) {
   auto base = node_.get<rclcpp::node_interfaces::NodeBaseInterface>();
   return base->resolve_topic_or_service_name(name, is_service);
 }

@@ -88,11 +88,11 @@ struct RosPublisherGroup : LazyPublisherGroup<RosPublisherGroup<T>> {
   using Base = LazyPublisherGroup<RosPublisherGroup<T>>;
   using Pub = typename rclcpp::Publisher<T>::SharedPtr;
 
-  explicit RosPublisherGroup(NodeHandle nh, const rcl::QoS& qos = rclQoS(1))
-      : queue_size(queue_size), latch(latch), nh_(nh) {}
+  explicit RosPublisherGroup(NodeHandle nh, const rclcpp::QoS& qos = rclcpp::QoS(1))
+      : nh_(nh), qos(qos) {}
 
   Pub make_publisher(const std::string& topic) const {
-    return nh_.createPublisher<T>(topic, qos);
+    return nh_.create_publisher<T>(topic, qos);
   }
 
   bool should_publish(const Pub& pub) const {
@@ -109,7 +109,7 @@ struct RosPublisherGroup : LazyPublisherGroup<RosPublisherGroup<T>> {
     pub->publish(*msg);
   }
 
-  const rcl::QoS qos;
+  const rclcpp::QoS qos;
 
  private:
   mutable NodeHandle nh_;

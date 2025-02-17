@@ -82,7 +82,7 @@ class NodeHandle {
                           const rclcpp::QoS& qos = rclcpp::ServicesQoS(),
                           GroupPtr = nullptr);
 
-  std::string resolveName(const std::string& name, bool is_service);
+  std::string resolve_name(const std::string& name, bool is_service);
 
   rclcpp::Logger logger() const {
     return node_.get<rclcpp::node_interfaces::NodeLoggingInterface>()->get_logger();

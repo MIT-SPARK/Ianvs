@@ -36,7 +36,7 @@ std::optional<MsgT> getSingleMessage(NodeHandle nh,
                                      bool spin_required,
                                      const rclcpp::QoS& qos = rclcpp::QoS(1)) {
   MessageWaitFunctor<MsgT> functor;
-  [[maybe_unused]] const auto sub = nh.createSubscription<MsgT>(
+  [[maybe_unused]] const auto sub = nh.create_subscription<MsgT>(
       topic, qos, &MessageWaitFunctor<MsgT>::callback, &functor);
   const auto msg = functor.wait(nh, spin_required);
   if (!msg) {
