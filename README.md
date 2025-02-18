@@ -8,6 +8,7 @@ This includes:
 - Wrappers around generic publishers and subscribers to support
 
 Ianvs is intended to only depend on a very select number of core ROS2 dependencies. These are currently:
+- `message_filters`
 - `rclcpp`
 - `std_srvs`
 - `sensor_msgs`
