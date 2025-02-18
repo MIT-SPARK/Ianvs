@@ -1,8 +1,8 @@
 name: Ianvs Linting
-run-name: Ianvs Linting
+run-name: linting
 on: push
 jobs:
-  Ianvs Linting:
+  linting:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
