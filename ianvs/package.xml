@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>ROS2 helper functions</description>
   <maintainer email="na26933@mit.edu">Nathan Hughes</maintainer>
-  <license>BSD-3-Clause</license>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>message_filters</depend>
