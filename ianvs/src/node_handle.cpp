@@ -24,7 +24,7 @@ NodeHandle& NodeHandle::operator/=(const std::string& ns) {
 
 std::string NodeHandle::resolve_name(const std::string& name, bool is_service) {
   auto base = node_.get<rclcpp::node_interfaces::NodeBaseInterface>();
-  return base->resolve_topic_or_service_name(name, is_service);
+  return base->resolve_topic_or_service_name(join_namespace(ns_, name), is_service);
 }
 
 }  // namespace ianvs
