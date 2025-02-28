@@ -88,6 +88,10 @@ class NodeHandle {
     return node_.get<rclcpp::node_interfaces::NodeLoggingInterface>()->get_logger();
   }
 
+  rclcpp::Time now() const {
+    return node_.get<rclcpp::node_interfaces::NodeClockInterface>()->get_clock()->now();
+  }
+
  private:
   NodeInterface node_;
   std::string ns_;
