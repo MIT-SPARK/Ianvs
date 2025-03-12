@@ -1,9 +1,12 @@
 #pragma once
+#include <chrono>
+
 #include <rclcpp/callback_group.hpp>
 #include <rclcpp/create_client.hpp>
 #include <rclcpp/create_publisher.hpp>
 #include <rclcpp/create_service.hpp>
 #include <rclcpp/create_subscription.hpp>
+#include <rclcpp/create_timer.hpp>
 #include <rclcpp/node_interfaces/node_base_interface.hpp>
 #include <rclcpp/node_interfaces/node_clock_interface.hpp>
 #include <rclcpp/node_interfaces/node_graph_interface.hpp>
@@ -11,8 +14,10 @@
 #include <rclcpp/node_interfaces/node_logging_interface.hpp>
 #include <rclcpp/node_interfaces/node_parameters_interface.hpp>
 #include <rclcpp/node_interfaces/node_services_interface.hpp>
+#include <rclcpp/node_interfaces/node_timers_interface.hpp>
 #include <rclcpp/node_interfaces/node_topics_interface.hpp>
 #include <rclcpp/subscription.hpp>
+#include <rclcpp/timer.hpp>
 
 #include "ianvs/visibility_control.h"
 
@@ -31,6 +36,7 @@ class NodeHandle {
   using Service = typename rclcpp::Service<T>::SharedPtr;
   template <typename T>
   using Client = typename rclcpp::Client<T>::SharedPtr;
+  using Timer = typename rclcpp::TimerBase::SharedPtr;
   using GroupPtr = rclcpp::CallbackGroup::SharedPtr;
 
   // TODO(nathan) this is really only one or two interfaces away from using all of them
@@ -39,6 +45,7 @@ class NodeHandle {
       rclcpp::node_interfaces::NodeClockInterface,
       rclcpp::node_interfaces::NodeLoggingInterface,
       rclcpp::node_interfaces::NodeGraphInterface,
+      rclcpp::node_interfaces::NodeTimersInterface,
       rclcpp::node_interfaces::NodeTopicsInterface,
       rclcpp::node_interfaces::NodeServicesInterface,
       rclcpp::node_interfaces::NodeParametersInterface>;
@@ -82,7 +89,18 @@ class NodeHandle {
                           const rclcpp::QoS& qos = rclcpp::ServicesQoS(),
                           GroupPtr = nullptr);
 
+  template <typename CallbackT>
+  Timer create_timer(std::chrono::milliseconds period_ms,
+                     bool is_wall_time,
+                     CallbackT&& callback,
+                     GroupPtr group = nullptr);
+
   std::string resolve_name(const std::string& name, bool is_service);
+
+  std::string node_name() const {
+    return node_.get<rclcpp::node_interfaces::NodeBaseInterface>()
+        ->get_fully_qualified_name();
+  }
 
   rclcpp::Logger logger() const {
     return node_.get<rclcpp::node_interfaces::NodeLoggingInterface>()->get_logger();
@@ -163,6 +181,28 @@ typename NodeHandle::Client<T> NodeHandle::create_client(const std::string& name
   auto services = node_.get<rclcpp::node_interfaces::NodeServicesInterface>();
   const auto new_name = join_namespace(ns_, name);
   return rclcpp::create_client<T>(base, graph, services, new_name, qos, group);
+}
+
+template <typename CallbackT>
+NodeHandle::Timer NodeHandle::create_timer(std::chrono::milliseconds period_ms,
+                                           bool is_wall_time,
+                                           CallbackT&& callback,
+                                           GroupPtr group) {
+  auto base = node_.get<rclcpp::node_interfaces::NodeBaseInterface>();
+  auto timer = node_.get<rclcpp::node_interfaces::NodeTimersInterface>();
+  if (is_wall_time) {
+    auto to_return =
+        rclcpp::create_wall_timer(period_ms, callback, group, base.get(), timer.get());
+    // force autostart
+    to_return->reset();
+    return to_return;
+  }
+
+  auto clock = node_.get<rclcpp::node_interfaces::NodeClockInterface>();
+  auto to_return = rclcpp::create_timer(
+      clock->get_clock(), period_ms, callback, group, base.get(), timer.get());
+  to_return->reset();
+  return to_return;
 }
 
 inline NodeHandle operator/(const NodeHandle& nh, const std::string& ns) {
