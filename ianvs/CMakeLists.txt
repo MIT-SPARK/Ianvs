@@ -46,5 +46,5 @@ install(
 )
 
 ament_export_targets(${PROJECT_NAME}-exports HAS_LIBRARY_TARGET)
-ament_export_dependencies(rclcpp sensor_msgs std_srvs)
+ament_export_dependencies(message_filters rclcpp sensor_msgs std_srvs)
 ament_package()
