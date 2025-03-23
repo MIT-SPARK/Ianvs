@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(ianvs)
+project(ianvs LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,9 @@ find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+
+find_package(Python COMPONENTS Interpreter Development)
+find_package(pybind11 CONFIG REQUIRED)
 
 add_library(
   ${PROJECT_NAME}
@@ -48,6 +51,16 @@ target_link_libraries(
 )
 ament_target_dependencies(play_rosbag PUBLIC tf2_msgs tf2_ros)
 
+pybind11_add_module(
+  _${PROJECT_NAME}_bindings src/bindings/image_encodings.cpp src/bindings/module.cpp
+)
+target_include_directories(
+  _${PROJECT_NAME}_bindings
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+         $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+ament_target_dependencies(_${PROJECT_NAME}_bindings PUBLIC sensor_msgs)
+
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
   TARGETS ${PROJECT_NAME} play_rosbag
@@ -56,6 +69,13 @@ install(
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
+
+ament_get_python_install_dir(PYTHON_INSTALL_PATH)
+install(TARGETS _${PROJECT_NAME}_bindings
+        ARCHIVE DESTINATION ${PYTHON_INSTALL_PATH}/ianvs
+        LIBRARY DESTINATION ${PYTHON_INSTALL_PATH}/ianvs
+)
+ament_python_install_package(${PROJECT_NAME})
 
 ament_export_targets(${PROJECT_NAME}-exports HAS_LIBRARY_TARGET)
 ament_export_dependencies(message_filters rclcpp sensor_msgs std_srvs)
