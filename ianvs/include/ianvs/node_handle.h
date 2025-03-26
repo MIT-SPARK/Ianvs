@@ -7,6 +7,7 @@
 #include <rclcpp/create_service.hpp>
 #include <rclcpp/create_subscription.hpp>
 #include <rclcpp/create_timer.hpp>
+#include <rclcpp/executors.hpp>
 #include <rclcpp/node_interfaces/node_base_interface.hpp>
 #include <rclcpp/node_interfaces/node_clock_interface.hpp>
 #include <rclcpp/node_interfaces/node_graph_interface.hpp>
@@ -207,6 +208,40 @@ NodeHandle::Timer NodeHandle::create_timer(std::chrono::milliseconds period_ms,
 
 inline NodeHandle operator/(const NodeHandle& nh, const std::string& ns) {
   return NodeHandle(nh.node(), join_namespace(nh.ns(), ns));
+}
+
+template <typename T>
+typename T::Response::SharedPtr call_service(rclcpp::Client<T>& client,
+                                             std::shared_ptr<typename T::Request> req,
+                                             size_t timeout_ms = 0,
+                                             NodeHandle* const nh = nullptr) {
+  using namespace std::chrono_literals;
+
+  while (!client.wait_for_service(10ms) && rclcpp::ok()) {
+    // TODO(nathan) logging
+    if (nh) {
+      auto base = nh->node().get<rclcpp::node_interfaces::NodeBaseInterface>();
+      rclcpp::spin_some(base);
+    }
+  }
+
+  bool valid = false;
+  auto result = client.async_send_request(req);
+  auto start = std::chrono::steady_clock::now();
+  std::chrono::milliseconds timeout(timeout_ms);
+  while (rclcpp::ok()) {
+    if (timeout > std::chrono::milliseconds::zero() &&
+        std::chrono::steady_clock::now() - start > timeout) {
+      break;
+    }
+
+    if (result.wait_for(10ms) != std::future_status::ready) {
+      valid = true;
+      break;
+    }
+  }
+
+  return valid ? result.get() : nullptr;
 }
 
 }  // namespace ianvs
