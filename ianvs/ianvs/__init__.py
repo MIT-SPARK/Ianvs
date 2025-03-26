@@ -11,4 +11,4 @@ def get_image(msg: sensor_msgs.msg.Image) -> Optional[np.ndarray]:
         return None
 
     shape = (msg.height, msg.width, info.channels)
-    return msg.data.view(dtype=info.dtype_str).reshape(shape)
+    return np.squeeze(np.frombuffer(msg.data, dtype=info.dtype_str).reshape(shape))

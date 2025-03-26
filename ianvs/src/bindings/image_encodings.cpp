@@ -18,9 +18,9 @@ std::string get_dtype_str(const std::string& encoding) {
 
   std::smatch m;
   if (std::regex_match(encoding, m, enc::cv_type_regex)) {
-    if (m.str(1) == "S") {
+    if (m.str(2) == "S") {
       prefix = "i";
-    } else if (m.str(1) == "F") {
+    } else if (m.str(2) == "F") {
       prefix = "f";
     }
   }
