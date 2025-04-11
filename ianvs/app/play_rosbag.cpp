@@ -10,14 +10,16 @@
 #include <rosbag2_transport/reader_writer_factory.hpp>
 #include <tf2_msgs/msg/tf_message.hpp>
 
+using Transform = geometry_msgs::msg::TransformStamped;
 using tf2_msgs::msg::TFMessage;
+
 namespace bp = boost::process;
 
-TFMessage::UniquePtr read_static_tfs(const rclcpp::Node& node,
-                                     const std::filesystem::path& bag_path) {
+std::vector<Transform> read_static_tfs(const rclcpp::Node& node,
+                                       const std::filesystem::path& bag_path) {
   const auto logger = node.get_logger();
   if (!std::filesystem::exists(bag_path)) {
-    return nullptr;
+    return {};
   }
 
   rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
@@ -27,13 +29,13 @@ TFMessage::UniquePtr read_static_tfs(const rclcpp::Node& node,
   const rclcpp::Serialization<TFMessage> serialization;
   auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(storage_options);
   if (!reader) {
-    return nullptr;
+    return {};
   }
 
-  auto all_tfs = std::make_unique<TFMessage>();
   RCLCPP_DEBUG_STREAM(node.get_logger(), "reading static tfs from " << bag_path);
-
+  std::map<std::string, std::map<std::string, Transform>> pose_map;
   reader->open(storage_options);
+
   rosbag2_storage::StorageFilter filter;
   filter.topics = {"/tf_static"};
   reader->set_filter(filter);
@@ -42,17 +44,36 @@ TFMessage::UniquePtr read_static_tfs(const rclcpp::Node& node,
     rclcpp::SerializedMessage serialized_msg(*msg->serialized_data);
     auto tf_msg = std::make_shared<TFMessage>();
     serialization.deserialize_message(&serialized_msg, tf_msg.get());
-    all_tfs->transforms.insert(all_tfs->transforms.end(),
-                               tf_msg->transforms.begin(),
-                               tf_msg->transforms.end());
+    for (const auto& tf : tf_msg->transforms) {
+      const auto parent_id = tf.header.frame_id;
+      const auto child_id = tf.child_frame_id;
+      auto parent = pose_map.find(parent_id);
+      if (parent == pose_map.end()) {
+        parent = pose_map.emplace(parent_id, std::map<std::string, Transform>()).first;
+      }
+
+      auto& children = parent->second;
+      auto child = children.find(child_id);
+      if (child == children.end()) {
+        children.emplace(child_id, tf);
+        continue;
+      }
+
+      RCLCPP_WARN_STREAM(
+          node.get_logger(),
+          "dropping repeated tf: " << parent_id << "_T_" << child_id << "!");
+    }
   }
 
   RCLCPP_DEBUG_STREAM(node.get_logger(), "finished reading static tfs");
-  if (all_tfs->transforms.empty()) {
-    return nullptr;
+  std::vector<Transform> poses;
+  for (const auto& [parent, children] : pose_map) {
+    for (const auto& [child, pose] : children) {
+      poses.push_back(pose);
+    }
   }
 
-  return all_tfs;
+  return poses;
 }
 
 int main(int argc, char** argv) {
@@ -95,10 +116,10 @@ int main(int argc, char** argv) {
 
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("tf_republisher");
-  auto tf_msg = read_static_tfs(*node, bag_path);
-  if (tf_msg) {
-     auto broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
-     broadcaster->sendTransform(tf_msg->transforms);
+  auto transforms = read_static_tfs(*node, bag_path);
+  if (!transforms.empty()) {
+    auto broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
+    broadcaster->sendTransform(transforms);
   }
 
   bp::child child(bp::search_path("ros2"), bp::args(cmd_args));
