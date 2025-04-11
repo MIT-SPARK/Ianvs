@@ -1,6 +1,7 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 
 #include <filesystem>
+#include <regex>
 
 #include <CLI/CLI.hpp>
 #include <boost/process.hpp>
@@ -15,8 +16,42 @@ using tf2_msgs::msg::TFMessage;
 
 namespace bp = boost::process;
 
-std::vector<Transform> read_static_tfs(const rclcpp::Node& node,
-                                       const std::filesystem::path& bag_path) {
+struct FrameTransform {
+  FrameTransform(const std::string& expr, const std::string& sub)
+      : expr(expr), sub(sub) {}
+
+  static FrameTransform prepend(const std::string& prefix) {
+    return {".*", prefix + "$&"};
+  }
+
+  static FrameTransform exclude(const std::string& expr) { return {expr, ""}; }
+
+  std::string apply(const std::string& frame_id) const {
+    std::regex re(expr);
+    return std::regex_replace(frame_id, re, sub);
+  }
+
+  const std::string expr;
+  const std::string sub;
+};
+
+std::string apply_transforms(const std::vector<FrameTransform>& transforms,
+                             const std::string& frame_id) {
+  std::string result = frame_id;
+  for (const auto& transform : transforms) {
+    result = transform.apply(result);
+    if (result.empty()) {
+      return "";
+    }
+  }
+
+  return result;
+}
+
+std::vector<Transform> read_static_tfs(
+    const rclcpp::Node& node,
+    const std::filesystem::path& bag_path,
+    const std::vector<FrameTransform>& id_transforms) {
   const auto logger = node.get_logger();
   if (!std::filesystem::exists(bag_path)) {
     return {};
@@ -44,9 +79,20 @@ std::vector<Transform> read_static_tfs(const rclcpp::Node& node,
     rclcpp::SerializedMessage serialized_msg(*msg->serialized_data);
     auto tf_msg = std::make_shared<TFMessage>();
     serialization.deserialize_message(&serialized_msg, tf_msg.get());
-    for (const auto& tf : tf_msg->transforms) {
-      const auto parent_id = tf.header.frame_id;
-      const auto child_id = tf.child_frame_id;
+    for (auto& tf : tf_msg->transforms) {
+      const auto parent_id = apply_transforms(id_transforms, tf.header.frame_id);
+      const auto child_id = apply_transforms(id_transforms, tf.child_frame_id);
+      if (parent_id.empty() || child_id.empty()) {
+        RCLCPP_WARN_STREAM(node.get_logger(),
+                           "dropping filtered transform '" << tf.header.frame_id
+                                                           << "_T_" << tf.child_frame_id
+                                                           << "'");
+        continue;
+      }
+
+      tf.header.frame_id = parent_id;
+      tf.child_frame_id = child_id;
+
       auto parent = pose_map.find(parent_id);
       if (parent == pose_map.end()) {
         parent = pose_map.emplace(parent_id, std::map<std::string, Transform>()).first;
@@ -76,28 +122,11 @@ std::vector<Transform> read_static_tfs(const rclcpp::Node& node,
   return poses;
 }
 
-int main(int argc, char** argv) {
-  CLI::App app;
-  argv = app.ensure_utf8(argv);
-  app.allow_extras();
-
-  // NOTE(nathan) for whatever reason, this doesn't get handled correctly when we use
-  // the -- separator and multiple bags, so I give up
-  std::string bag_path;
-  app.add_option("bag_path", bag_path)->required()->check(CLI::ExistingPath);
-
-  std::string message;
-  app.add_option("-m,--message", message, "fake arg");
-
-  try {
-    app.parse(argc, argv);
-  } catch (const CLI::ParseError& e) {
-    return app.exit(e);
-  }
-
+std::vector<std::string> get_bag_args(const std::string& bag_path,
+                                      const std::vector<std::string>& remaining) {
   std::vector<std::string> cmd_args{"bag", "play", bag_path};
   bool added_exclude = false;
-  for (const auto& arg : app.remaining()) {
+  for (const auto& arg : remaining) {
     if (arg == "--") {
       continue;
     }
@@ -114,14 +143,41 @@ int main(int argc, char** argv) {
     cmd_args.push_back("/tf_static");
   }
 
+  return cmd_args;
+}
+
+int main(int argc, char** argv) {
+  CLI::App app;
+  argv = app.ensure_utf8(argv);
+  app.allow_extras();
+
+  // NOTE(nathan) for whatever reason, this doesn't get handled correctly when we use
+  // the -- separator and multiple bags, so I give up
+  std::string bag_path;
+  app.add_option("bag_path", bag_path)->required()->check(CLI::ExistingPath);
+  std::string prefix;
+  app.add_option("-p,--prefix", prefix);
+
+  try {
+    app.parse(argc, argv);
+  } catch (const CLI::ParseError& e) {
+    return app.exit(e);
+  }
+
+  std::vector<FrameTransform> frame_transforms;
+  if (!prefix.empty()) {
+    frame_transforms.push_back(FrameTransform::prepend(prefix));
+  }
+
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("tf_republisher");
-  auto transforms = read_static_tfs(*node, bag_path);
+  auto transforms = read_static_tfs(*node, bag_path, frame_transforms);
+  auto broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
   if (!transforms.empty()) {
-    auto broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
     broadcaster->sendTransform(transforms);
   }
 
+  const auto cmd_args = get_bag_args(bag_path, app.remaining());
   bp::child child(bp::search_path("ros2"), bp::args(cmd_args));
   rclcpp::spin(node);
   rclcpp::shutdown();
