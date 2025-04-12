@@ -13,6 +13,15 @@ Ianvs is intended to only depend on a very select number of core ROS2 dependenci
 - `std_srvs`
 - `sensor_msgs`
 
+## Utilities
+
+Ianvs includes an utility for playing a rosbag after modifying the static transforms.
+The general usage is below:
+```
+ros2 run ianvs /path/to/bag [-p prefix] [-s expr:sub]... [-f filter]... [-- ros2 bag play args]
+```
+The `--` separator is optional in general, but necessary to deconflict with the `--start-paused` or `--storage` flags for the `ros2 bag play` command.
+
 # About the Name
 
 Ianvs is the latin spelling of Janus, the Roman deity of doorways and transitions
