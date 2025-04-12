@@ -13,6 +13,7 @@
 
 using Transform = geometry_msgs::msg::TransformStamped;
 using tf2_msgs::msg::TFMessage;
+using namespace std::chrono_literals;
 
 namespace bp = boost::process;
 
@@ -146,17 +147,68 @@ std::vector<std::string> get_bag_args(const std::string& bag_path,
   return cmd_args;
 }
 
+class BagWrapper : public rclcpp::Node {
+ public:
+  BagWrapper(const std::string& bag_path,
+             const std::vector<FrameTransform>& frame_transforms,
+             const std::vector<std::string>& bag_args)
+      : Node("tf_republisher"), broadcaster_(this) {
+    const auto transforms = read_static_tfs(*this, bag_path, frame_transforms);
+    if (!transforms.empty()) {
+      broadcaster_.sendTransform(transforms);
+    }
+
+    const auto cmd_args = get_bag_args(bag_path, bag_args);
+    child_ = std::make_unique<bp::child>(bp::search_path("ros2"), bp::args(cmd_args));
+
+    auto timer_callback = [this]() -> void {
+      if (child_ && !child_->running()) {
+        rclcpp::shutdown();
+      }
+    };
+
+    timer_ = this->create_wall_timer(10ms, timer_callback);
+  }
+
+  int stop() {
+    int exit_code = 0;
+    if (child_) {
+      child_->wait();
+      exit_code = child_->exit_code();
+    }
+
+    child_.reset();
+    return exit_code;
+  }
+
+  ~BagWrapper() { stop(); }
+
+ private:
+  std::unique_ptr<bp::child> child_;
+  rclcpp::TimerBase::SharedPtr timer_;
+  tf2_ros::StaticTransformBroadcaster broadcaster_;
+};
+
 int main(int argc, char** argv) {
-  CLI::App app;
+  CLI::App app("Utility to play a rosbag after modfying and publishing transforms");
   argv = app.ensure_utf8(argv);
   app.allow_extras();
 
   // NOTE(nathan) for whatever reason, this doesn't get handled correctly when we use
   // the -- separator and multiple bags, so I give up
-  std::string bag_path;
-  app.add_option("bag_path", bag_path)->required()->check(CLI::ExistingPath);
+  std::filesystem::path bag_path;
+  app.add_option("bag_path", bag_path)
+      ->required()
+      ->check(CLI::ExistingPath)
+      ->description("primary bag to read static tfs from");
   std::string prefix;
-  app.add_option("-p,--prefix", prefix);
+  app.add_option("-p,--prefix", prefix)
+      ->take_last()
+      ->description("prefix to apply to ALL frames");
+  std::string filter;
+  app.add_option("-f,--filter", filter)
+      ->join('|')
+      ->description("optional regex filter to drop frames (applied before prefix)");
 
   try {
     app.parse(argc, argv);
@@ -165,23 +217,18 @@ int main(int argc, char** argv) {
   }
 
   std::vector<FrameTransform> frame_transforms;
+  if (!filter.empty()) {
+    frame_transforms.push_back(FrameTransform::exclude(filter));
+  }
+
   if (!prefix.empty()) {
     frame_transforms.push_back(FrameTransform::prepend(prefix));
   }
 
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<rclcpp::Node>("tf_republisher");
-  auto transforms = read_static_tfs(*node, bag_path, frame_transforms);
-  auto broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
-  if (!transforms.empty()) {
-    broadcaster->sendTransform(transforms);
-  }
 
-  const auto cmd_args = get_bag_args(bag_path, app.remaining());
-  bp::child child(bp::search_path("ros2"), bp::args(cmd_args));
+  auto node = std::make_shared<BagWrapper>(bag_path, frame_transforms, app.remaining());
   rclcpp::spin(node);
   rclcpp::shutdown();
-
-  child.wait();
-  return child.exit_code();
+  return node->stop();
 }
