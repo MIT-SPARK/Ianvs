@@ -18,14 +18,37 @@ using namespace std::chrono_literals;
 namespace bp = boost::process;
 
 struct FrameTransform {
-  FrameTransform(const std::string& expr, const std::string& sub)
-      : expr(expr), sub(sub) {}
+  struct Config {
+    std::string prefix;
+    std::string filter;
+    std::vector<std::string> substitutions;
+  };
 
-  static FrameTransform prepend(const std::string& prefix) {
-    return {".*", prefix + "$&"};
+  static std::vector<FrameTransform> fromConfig(const Config& config,
+                                                const rclcpp::Logger& logger) {
+    std::vector<FrameTransform> transforms;
+    if (!config.filter.empty()) {
+      transforms.push_back({config.filter, ""});
+    }
+
+    if (!config.prefix.empty()) {
+      transforms.push_back(FrameTransform{"^.+", config.prefix + "$&"});
+    }
+
+    for (const auto& arg : config.substitutions) {
+      const auto pos = arg.find(":");
+      if (pos == std::string::npos) {
+        RCLCPP_WARN_STREAM(logger, "Invalid substitution: '" << arg << "'");
+        continue;
+      }
+
+      const auto expr = arg.substr(0, pos);
+      const auto sub = arg.substr(pos + 1);
+      transforms.push_back(FrameTransform{expr, sub});
+    }
+
+    return transforms;
   }
-
-  static FrameTransform exclude(const std::string& expr) { return {expr, ""}; }
 
   std::string apply(const std::string& frame_id) const {
     std::regex re(expr);
@@ -36,7 +59,9 @@ struct FrameTransform {
   const std::string sub;
 };
 
-std::string apply_transforms(const std::vector<FrameTransform>& transforms,
+using FrameTransforms = std::vector<FrameTransform>;
+
+std::string apply_transforms(const FrameTransforms& transforms,
                              const std::string& frame_id) {
   std::string result = frame_id;
   for (const auto& transform : transforms) {
@@ -49,11 +74,13 @@ std::string apply_transforms(const std::vector<FrameTransform>& transforms,
   return result;
 }
 
-std::vector<Transform> read_static_tfs(
-    const rclcpp::Node& node,
-    const std::filesystem::path& bag_path,
-    const std::vector<FrameTransform>& id_transforms) {
-  const auto logger = node.get_logger();
+std::string frame_name(const std::string& dest, const std::string& src) {
+  return "'" + dest + "_T_" + src + "'";
+}
+
+std::vector<Transform> read_static_tfs(const std::filesystem::path& bag_path,
+                                       const FrameTransforms& id_transforms,
+                                       const rclcpp::Logger* logger = nullptr) {
   if (!std::filesystem::exists(bag_path)) {
     return {};
   }
@@ -68,7 +95,6 @@ std::vector<Transform> read_static_tfs(
     return {};
   }
 
-  RCLCPP_DEBUG_STREAM(node.get_logger(), "reading static tfs from " << bag_path);
   std::map<std::string, std::map<std::string, Transform>> pose_map;
   reader->open(storage_options);
 
@@ -84,10 +110,11 @@ std::vector<Transform> read_static_tfs(
       const auto parent_id = apply_transforms(id_transforms, tf.header.frame_id);
       const auto child_id = apply_transforms(id_transforms, tf.child_frame_id);
       if (parent_id.empty() || child_id.empty()) {
-        RCLCPP_WARN_STREAM(node.get_logger(),
-                           "dropping filtered transform '" << tf.header.frame_id
-                                                           << "_T_" << tf.child_frame_id
-                                                           << "'");
+        if (logger) {
+          const auto orig_name = frame_name(tf.header.frame_id, tf.child_frame_id);
+          RCLCPP_INFO_STREAM(*logger, "Dropping filtered transform " << orig_name);
+        }
+
         continue;
       }
 
@@ -106,13 +133,13 @@ std::vector<Transform> read_static_tfs(
         continue;
       }
 
-      RCLCPP_WARN_STREAM(
-          node.get_logger(),
-          "dropping repeated tf: " << parent_id << "_T_" << child_id << "!");
+      if (logger) {
+        const auto remapped_name = frame_name(parent_id, child_id);
+        RCLCPP_INFO_STREAM(*logger, "Dropping repeated tf " << remapped_name);
+      }
     }
   }
 
-  RCLCPP_DEBUG_STREAM(node.get_logger(), "finished reading static tfs");
   std::vector<Transform> poses;
   for (const auto& [parent, children] : pose_map) {
     for (const auto& [child, pose] : children) {
@@ -149,11 +176,15 @@ std::vector<std::string> get_bag_args(const std::string& bag_path,
 
 class BagWrapper : public rclcpp::Node {
  public:
-  BagWrapper(const std::string& bag_path,
-             const std::vector<FrameTransform>& frame_transforms,
-             const std::vector<std::string>& bag_args)
+  BagWrapper(const FrameTransform::Config& config,
+             const std::string& bag_path,
+             const std::vector<std::string>& bag_args,
+             bool verbose)
       : Node("tf_republisher"), broadcaster_(this) {
-    const auto transforms = read_static_tfs(*this, bag_path, frame_transforms);
+    const auto logger = get_logger();
+    const auto frame_transforms = FrameTransform::fromConfig(config, logger);
+    const auto transforms =
+        read_static_tfs(bag_path, frame_transforms, verbose ? &logger : nullptr);
     if (!transforms.empty()) {
       broadcaster_.sendTransform(transforms);
     }
@@ -201,14 +232,18 @@ int main(int argc, char** argv) {
       ->required()
       ->check(CLI::ExistingPath)
       ->description("primary bag to read static tfs from");
-  std::string prefix;
-  app.add_option("-p,--prefix", prefix)
+
+  bool verbose = false;
+  app.add_flag("-v,--verbose", verbose, "show transform results");
+  FrameTransform::Config config;
+  app.add_option("-p,--prefix", config.prefix)
       ->take_last()
       ->description("prefix to apply to ALL frames");
-  std::string filter;
-  app.add_option("-f,--filter", filter)
+  app.add_option("-f,--filter", config.filter)
       ->join('|')
       ->description("optional regex filter to drop frames (applied before prefix)");
+  app.add_option("-s,--substitution", config.substitutions)
+      ->description("apply substitution (match and substituion are separated by :)");
 
   try {
     app.parse(argc, argv);
@@ -216,18 +251,9 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
-  std::vector<FrameTransform> frame_transforms;
-  if (!filter.empty()) {
-    frame_transforms.push_back(FrameTransform::exclude(filter));
-  }
-
-  if (!prefix.empty()) {
-    frame_transforms.push_back(FrameTransform::prepend(prefix));
-  }
-
   rclcpp::init(argc, argv);
 
-  auto node = std::make_shared<BagWrapper>(bag_path, frame_transforms, app.remaining());
+  auto node = std::make_shared<BagWrapper>(config, bag_path, app.remaining(), verbose);
   rclcpp::spin(node);
   rclcpp::shutdown();
   return node->stop();
