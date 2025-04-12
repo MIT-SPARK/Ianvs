@@ -12,10 +12,15 @@ endif()
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 
 find_package(ament_cmake REQUIRED)
+find_package(Boost REQUIRED COMPONENTS filesystem system)
+find_package(CLI11 REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rosbag2_transport REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(tf2_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 add_library(
   ${PROJECT_NAME}
@@ -36,9 +41,16 @@ if(NOT BUILD_SHARED_LIBS)
   set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
 
+add_executable(play_rosbag app/play_rosbag.cpp)
+target_link_libraries(
+  play_rosbag PRIVATE rclcpp::rclcpp rosbag2_transport::rosbag2_transport Boost::system
+                      Boost::filesystem CLI11::CLI11
+)
+ament_target_dependencies(play_rosbag PUBLIC tf2_msgs tf2_ros)
+
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
-  TARGETS ${PROJECT_NAME}
+  TARGETS ${PROJECT_NAME} play_rosbag
   EXPORT ${PROJECT_NAME}-exports
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
