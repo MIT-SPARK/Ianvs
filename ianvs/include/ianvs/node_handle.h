@@ -58,6 +58,9 @@ class NodeHandle {
   const NodeInterface& node() const { return node_; }
   const std::string& ns() const { return ns_; }
 
+  template <typename InterfaceT>
+  std::shared_ptr<InterfaceT> as();
+
   template <typename T>
   Publisher<T> create_publisher(const std::string& topic, const rclcpp::QoS& qos);
 
@@ -115,6 +118,11 @@ class NodeHandle {
   NodeInterface node_;
   std::string ns_;
 };
+
+template <typename InterfaceT>
+std::shared_ptr<InterfaceT> NodeHandle::as() {
+  return node_.get<InterfaceT>();
+}
 
 template <typename T>
 typename NodeHandle::Publisher<T> NodeHandle::create_publisher(const std::string& topic,
