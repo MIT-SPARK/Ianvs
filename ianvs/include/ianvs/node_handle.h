@@ -246,12 +246,12 @@ typename T::Response::SharedPtr call_service(rclcpp::Client<T>& client,
   auto start = std::chrono::steady_clock::now();
   std::chrono::milliseconds timeout(timeout_ms);
   while (rclcpp::ok()) {
-    if (timeout > std::chrono::milliseconds::zero() &&
-        std::chrono::steady_clock::now() - start > timeout) {
+    const std::chrono::duration<double> diff = std::chrono::steady_clock::now() - start;
+    if (timeout > std::chrono::milliseconds::zero() && diff > timeout) {
       break;
     }
 
-    if (result.wait_for(10ms) != std::future_status::ready) {
+    if (result.wait_for(10ms) == std::future_status::ready) {
       valid = true;
       break;
     }
