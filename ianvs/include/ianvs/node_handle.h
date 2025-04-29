@@ -67,13 +67,15 @@ class NodeHandle {
   template <typename T, typename CallbackT>
   Subscription<T> create_subscription(const std::string& topic,
                                       const rclcpp::QoS& qos,
-                                      CallbackT&& callback);
+                                      CallbackT&& callback,
+                                      GroupPtr group = nullptr);
 
   template <typename T, typename CallbackT, typename Cls>
   Subscription<T> create_subscription(const std::string& topic,
                                       const rclcpp::QoS& qos,
                                       CallbackT&& callback,
-                                      Cls* class_pointer);
+                                      Cls* class_pointer,
+                                      GroupPtr group = nullptr);
 
   template <typename T, typename CallbackT>
   Service<T> create_service(const std::string& service_name,
@@ -132,9 +134,14 @@ typename NodeHandle::Publisher<T> NodeHandle::create_publisher(const std::string
 
 template <typename T, typename CallbackT>
 typename NodeHandle::Subscription<T> NodeHandle::create_subscription(
-    const std::string& topic, const rclcpp::QoS& qos, CallbackT&& callback) {
+    const std::string& topic,
+    const rclcpp::QoS& qos,
+    CallbackT&& callback,
+    GroupPtr group) {
+  rclcpp::SubscriptionOptions opts;
+  opts.callback_group = group;
   return rclcpp::create_subscription<T>(
-      node_, join_namespace(ns_, topic), qos, callback);
+      node_, join_namespace(ns_, topic), qos, callback, opts);
 }
 
 template <typename T, typename CallbackT, typename Cls>
@@ -142,7 +149,8 @@ typename NodeHandle::Subscription<T> NodeHandle::create_subscription(
     const std::string& topic,
     const rclcpp::QoS& qos,
     CallbackT&& callback,
-    Cls* class_pointer) {
+    Cls* class_pointer,
+    GroupPtr group) {
   return create_subscription<T>(
       topic, qos, std::bind(callback, class_pointer, std::placeholders::_1));
 }
