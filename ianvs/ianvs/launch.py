@@ -7,8 +7,6 @@ from launch.some_substitutions_type import SomeSubstitutionsType
 from launch.substitution import Substitution
 from launch.utilities import perform_substitutions, normalize_to_list_of_substitutions
 
-import importlib.metadata as im
-
 
 class PyenvPrefix(Substitution):
     """Custom substitution for prefixing exec with correct interperter."""
@@ -50,60 +48,13 @@ class PyenvPrefix(Substitution):
         return f"{prefix} {pyinterp}"
 
 
-class PythonExecutable(Substitution):
-    """Custom substitution for prefixing exec with correct interperter."""
-
-    def __init__(
-        self,
-        executable: SomeSubstitutionsType,
-        package: Optional[SomeSubstitutionsType] = None,
-    ):
-        super().__init__()
-        self.executable = normalize_to_list_of_substitutions(executable)
-        if package is not None:
-            self.package = normalize_to_list_of_substitutions(package)
-        else:
-            self.package = None
-
-    @classmethod
-    def parse(cls, data: Sequence[SomeSubstitutionsType]):
-        raise ValueError("Cannot directly parse!")
-
-    def describe(self) -> Text:
-        exec_repr = " + ".join([s.describe() for s in self.executable])
-        if self.package is not None:
-            pkg_repr = ", pkg=" + " + ".join([s.describe() for s in self.package])
-        else:
-            pkg_repr = ""
-
-        return f"PyenvExec(exec={exec_repr}, {pkg_repr})"
-
-    def perform(self, context: LaunchContext) -> Text:
-        executable = perform_substitutions(context, self.executable)
-        if self.package is None:
-            return executable
-
-        package = perform_substitutions(context, self.package)
-        import py_pubsub
-        print(py_pubsub.__file__)
-        pkg_info = im.distribution(package)
-        print(pkg_info.entry_points)
-        print(f"parsed exec='{executable}', pkg='{package}'")
-        return executable
-
-
-@expose_action("custom_node")
+@expose_action("pyenv_node")
 class CustomNode(Node):
     """Custom node action that handles virtual environments."""
 
-    def __init__(self, *, executable, pyenv, package=None, prefix=None, **kwargs):
+    def __init__(self, *, pyenv, prefix=None, **kwargs):
         """Set up the node."""
-        super().__init__(
-            executable=PythonExecutable(executable, package),
-            prefix=PyenvPrefix(pyenv, prefix),
-            package=package,
-            **kwargs,
-        )
+        super().__init__(prefix=PyenvPrefix(pyenv, prefix), **kwargs)
 
     @classmethod
     def parse(cls, entity: Entity, parser: Parser):
