@@ -230,6 +230,10 @@ std::vector<std::string> get_bag_args(const std::string& bag_path,
       continue;
     }
 
+    if (arg == "--ros-args") {
+      break;
+    }
+
     cmd_args.push_back(arg);
     if (arg == "--exclude-topics") {
       cmd_args.push_back("/tf_static");
@@ -346,7 +350,23 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
-  rclcpp::init(1, argv);
+  // filters argc and argv to only have wrapper node args
+  std::vector<char*> ros_argv;
+  ros_argv.push_back(argv[0]);
+
+  bool found_ros_args = false;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg(argv[i]);
+    if (arg == "--ros-args") {
+      found_ros_args = true;
+    }
+
+    if (found_ros_args) {
+      ros_argv.push_back(argv[i]);
+    }
+  }
+
+  rclcpp::init(ros_argv.size(), ros_argv.data());
 
   auto node =
       std::make_shared<BagWrapper>(config, bag, app.remaining(), remaps, verbose);
