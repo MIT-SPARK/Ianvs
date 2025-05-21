@@ -55,6 +55,12 @@ target_link_libraries(
 )
 ament_target_dependencies(play_rosbag PUBLIC tf2_msgs tf2_ros)
 
+add_executable(merge_rosbags app/merge_rosbags.cpp)
+target_link_libraries(
+  merge_rosbags PRIVATE rclcpp::rclcpp rosbag2_transport::rosbag2_transport
+                        CLI11::CLI11
+)
+
 pybind11_add_module(
   _${PROJECT_NAME}_bindings src/bindings/image_encodings.cpp src/bindings/module.cpp
 )
@@ -67,7 +73,7 @@ ament_target_dependencies(_${PROJECT_NAME}_bindings PUBLIC sensor_msgs)
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
-  TARGETS ${PROJECT_NAME} play_rosbag
+  TARGETS ${PROJECT_NAME} play_rosbag merge_rosbags
   EXPORT ${PROJECT_NAME}-exports
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
