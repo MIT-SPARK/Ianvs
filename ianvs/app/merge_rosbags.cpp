@@ -78,7 +78,7 @@ struct ReaderInfo {
     while (reader->has_next()) {
       auto msg = reader->read_next();
       if (!msg) {
-        //std::cout << "Reader has invalid message!" << std::endl;
+        // std::cout << "Reader has invalid message!" << std::endl;
         continue;
       }
 
@@ -89,11 +89,11 @@ struct ReaderInfo {
         continue;
       }
 
-      //std::cout << "Got valid message!" << std::endl;
+      // std::cout << "Got valid message!" << std::endl;
       return {msg, &iter->second};
     }
 
-    //std::cout << "Reader has no messages!" << std::endl;
+    // std::cout << "Reader has no messages!" << std::endl;
     return {};
   }
 
@@ -107,16 +107,16 @@ using MsgVec = std::vector<MessageInfo>;
 void fill_messages(const ReaderVec& readers, MsgVec& msgs) {
   for (size_t i = 0; i < readers.size(); ++i) {
     if (!readers[i]) {
-      //std::cout << "Invalid reader in list: " << i << "!" << std::endl;
+      // std::cout << "Invalid reader in list: " << i << "!" << std::endl;
       continue;
     }
 
     if (msgs[i]) {
-      //std::cout << "Previous message present: " << i << "!" << std::endl;
+      // std::cout << "Previous message present: " << i << "!" << std::endl;
       continue;
     }
 
-    //std::cout << "Updated message: " << i << "!" << std::endl;
+    // std::cout << "Updated message: " << i << "!" << std::endl;
     msgs[i] = readers[i].next();
   }
 }
@@ -178,6 +178,21 @@ void merge_bags(const std::vector<std::filesystem::path>& inputs,
   }
 }
 
+std::filesystem::path normalize_bag_path(const std::filesystem::path& bag_path) {
+  if (std::filesystem::is_directory(bag_path)) {
+    return bag_path;
+  } else {
+    return bag_path.parent_path();
+  }
+}
+
+std::filesystem::path get_temp_output(const std::filesystem::path& last_bag) {
+  std::filesystem::path output = last_bag.parent_path();
+  const std::string output_name = "." + last_bag.stem().string();
+  output /= output_name;
+  return output;
+}
+
 int main(int argc, char** argv) {
   CLI::App app("Utility to merge multiple rosbags");
   argv = app.ensure_utf8(argv);
@@ -185,12 +200,14 @@ int main(int argc, char** argv) {
 
   std::filesystem::path from_bag;
   std::filesystem::path to_bag;
+  std::filesystem::path output;
   app.add_option("from_bag", from_bag)
       ->check(CLI::ExistingPath)
       ->description("bag to take topics from");
   app.add_option("to_bag", to_bag)
       ->check(CLI::ExistingPath)
       ->description("bag to write topics to");
+  app.add_option("-o,--output", output)->description("optional output bag");
 
   try {
     app.parse(argc, argv);
@@ -198,17 +215,23 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
-  std::filesystem::path output;
-  if (std::filesystem::is_directory(to_bag)) {
-    output = to_bag.parent_path();
-  } else {
-    output = to_bag.parent_path().parent_path();
+  from_bag = normalize_bag_path(from_bag);
+  to_bag = normalize_bag_path(to_bag);
+
+  bool cleanup = false;
+  if (output.empty()) {
+    cleanup = true;
+    output = get_temp_output(to_bag);
   }
 
-  const std::string output_name = "." + to_bag.stem().string();
-  output /= output_name;
-  std::cout << "Merging " << from_bag << " -> " << to_bag << " @ " << output
-            << std::endl;
+  std::cout << "Merging [" << from_bag << ", " << to_bag << "] -> "
+            << (cleanup ? to_bag : output) << std::endl;
+
   merge_bags({from_bag, to_bag}, output);
+  if (cleanup) {
+    std::filesystem::remove_all(to_bag);
+    std::filesystem::rename(output, to_bag);
+  }
+
   return 0;
 }
