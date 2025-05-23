@@ -148,9 +148,31 @@ std::vector<std::string> process_bag(const std::filesystem::path& bag_path,
   return cmd_args;
 }
 
-void cleanup(PluginVec& plugins) {
+void stop_plugins(const PluginVec& plugins) {
   for (const auto& plugin : plugins) {
     plugin->on_stop();
+  }
+}
+
+void cleanup(PluginVec& plugins, rclcpp::Executor& executor) {
+  if (rclcpp::ok()) {
+    std::atomic<bool> finished = false;
+    std::thread stop_thread([&]() {
+      for (const auto& plugin : plugins) {
+        plugin->on_stop();
+      }
+      finished = true;
+    });
+
+    while (!finished) {
+      executor.spin_once(1000ns);
+    }
+
+    stop_thread.join();
+  } else {
+    for (const auto& plugin : plugins) {
+      plugin->on_stop();
+    }
   }
 
   plugins.clear();
@@ -162,7 +184,10 @@ int main(int argc, char** argv) {
   rclcpp::init(ros_argv.size(), ros_argv.data());
   rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
 
+  rclcpp::executors::MultiThreadedExecutor executor;
   auto node = std::make_shared<BagWrapper>();
+  executor.add_node(node);
+
   pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader("ianvs",
                                                          "ianvs::RosbagPlayPlugin");
 
@@ -193,24 +218,22 @@ int main(int argc, char** argv) {
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError& e) {
-    cleanup(plugins);
+    cleanup(plugins, executor);
     return app.exit(e);
   }
 
   const auto cmd_args = process_bag(bag, plugins, app.remaining());
   if (cmd_args.empty()) {
-    cleanup(plugins);
+    cleanup(plugins, executor);
     return 1;
   }
 
-  rclcpp::executors::MultiThreadedExecutor executor;
   node->start(cmd_args);
-  executor.add_node(node);
   while (rclcpp::ok() && node->running) {
     executor.spin_once(1000ns);
   }
 
   const auto ret = node->stop();
-  cleanup(plugins);
+  cleanup(plugins, executor);
   return ret;
 }

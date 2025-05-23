@@ -43,11 +43,18 @@ void SignalStopPlugin::add_options(CLI::App& app) {
 }
 
 void SignalStopPlugin::on_stop() {
+  if (!rclcpp::ok() || !node_) {
+    return;
+  }
+
   for (const auto& client : clients_) {
     auto req = std::make_shared<std_srvs::srv::Empty::Request>();
-    const auto rep = ianvs::call_service(*client, req);
+    const auto rep = ianvs::call_service(*client, req, 50);
     if (!rep) {
-      RCLCPP_ERROR(node_->get_logger(), "Service call for client failed!");
+      RCLCPP_ERROR_STREAM(node_->get_logger(),
+                          "Service call for client '"
+                              << std::string(client->get_service_name())
+                              << "' failed!");
     }
   }
 }
