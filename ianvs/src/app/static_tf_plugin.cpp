@@ -74,6 +74,7 @@ class StaticTfPlugin : public RosbagPlayPlugin {
 
   void init(std::shared_ptr<rclcpp::Node> node) override;
   void add_options(CLI::App& app) override;
+  std::vector<std::string> modify_args(const std::vector<std::string>& args) override;
   void on_start(rosbag2_cpp::Reader& reader,
                 const rclcpp::Logger* logger = nullptr) override;
   void on_stop() override {}
@@ -98,6 +99,27 @@ void StaticTfPlugin::add_options(CLI::App& app) {
       ->description("optional regex filter to drop frames (applied before prefix)");
   app.add_option("-s,--substitution", config.substitutions)
       ->description("apply substitution (match and substituion are separated by :)");
+}
+
+using ArgVec = std::vector<std::string>;
+
+ArgVec StaticTfPlugin::modify_args(const ArgVec& args) {
+  bool added_exclude = false;
+  std::vector<std::string> new_args;
+  for (const auto& arg : args) {
+    new_args.push_back(arg);
+    if (arg == "--exclude-topics") {
+      new_args.push_back("/tf_static");
+      added_exclude = true;
+    }
+  }
+
+  if (!added_exclude) {
+    new_args.push_back("--exclude-topics");
+    new_args.push_back("/tf_static");
+  }
+
+  return new_args;
 }
 
 void StaticTfPlugin::on_start(rosbag2_cpp::Reader& reader,
