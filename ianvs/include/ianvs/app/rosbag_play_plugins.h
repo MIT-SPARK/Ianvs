@@ -48,10 +48,22 @@ namespace ianvs {
 
 class RosbagPlayPlugin {
  public:
-  virtual void init(std::shared_ptr<rclcpp::Node> node);
-  virtual void add_options(CLI::App& app) = 0;
+  //! @brief Initialize plugin
+  virtual void init(std::shared_ptr<rclcpp::Node> node) = 0;
+
+  //! @brief Add CLI options to executable
+  virtual void add_options(CLI::App& /* app */) {}
+
+  //! @brief Return ros2 bag play args with extra arguments injected
+  virtual std::vector<std::string> modify_args(const std::vector<std::string>& args) {
+    return args;
+  }
+
+  //! @brief Callback event to run before the bag starts
   virtual void on_start(rosbag2_cpp::Reader& reader,
                         const rclcpp::Logger* logger = nullptr) = 0;
+
+  //! @brief Callback event to run after the bag stops
   virtual void on_stop() = 0;
 };
 
