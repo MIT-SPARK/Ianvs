@@ -37,12 +37,9 @@
 #include <memory>
 
 #include <CLI/CLI.hpp>
+#include <rclcpp/logger.hpp>
 #include <rclcpp/node.hpp>
 #include <rosbag2_cpp/reader.hpp>
-
-namespace rclcpp {
-class Logger;
-}
 
 namespace ianvs {
 
