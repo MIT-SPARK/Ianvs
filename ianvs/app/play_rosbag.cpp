@@ -11,59 +11,22 @@
 #include "ianvs/app/rosbag_play_plugins.h"
 
 using namespace std::chrono_literals;
+using PluginVec = std::vector<std::shared_ptr<ianvs::RosbagPlayPlugin>>;
 
 namespace bp = boost::process;
 
-std::vector<std::string> get_bag_args(const std::string& bag_path,
-                                      const std::vector<std::string>& remaining,
-                                      const std::vector<std::string>& remaps) {
-  std::vector<std::string> cmd_args{"bag", "play", bag_path};
-  bool added_exclude = false;
-  bool added_remap = false;
-  for (const auto& arg : remaining) {
-    if (arg == "--") {
-      continue;
-    }
-
-    if (arg == "--ros-args") {
-      break;
-    }
-
-    cmd_args.push_back(arg);
-    if (arg == "--exclude-topics") {
-      cmd_args.push_back("/tf_static");
-      added_exclude = true;
-    }
-
-    if (arg == "--remap") {
-      cmd_args.insert(cmd_args.end(), remaps.begin(), remaps.end());
-      added_remap = true;
-    }
-  }
-
-  if (!added_exclude) {
-    cmd_args.push_back("--exclude-topics");
-    cmd_args.push_back("/tf_static");
-  }
-
-  if (!added_remap && !remaps.empty()) {
-    cmd_args.push_back("--remap");
-    cmd_args.insert(cmd_args.end(), remaps.begin(), remaps.end());
-  }
-
-  return cmd_args;
-}
-
 class BagWrapper : public rclcpp::Node {
  public:
-  BagWrapper() : Node("bag_wrapper") {}
+  BagWrapper() : Node("bag_wrapper"), running(false) {}
 
   void start(const std::vector<std::string>& cmd_args) {
+    running = true;
     child_ = std::make_unique<bp::child>(bp::search_path("ros2"), bp::args(cmd_args));
 
     auto timer_callback = [this]() -> void {
       if (child_ && !child_->running()) {
-        rclcpp::shutdown();
+        running = false;
+        timer_->cancel();
       }
     };
 
@@ -82,6 +45,8 @@ class BagWrapper : public rclcpp::Node {
   }
 
   ~BagWrapper() { stop(); }
+
+  bool running;
 
  private:
   std::unique_ptr<bp::child> child_;
@@ -108,6 +73,90 @@ std::vector<char*> get_ros_args(int argc, char** argv) {
   return ros_argv;
 }
 
+std::vector<std::string> get_bag_args(const std::string& bag_path,
+                                      const std::vector<std::string>& remaining) {
+  std::vector<std::string> cmd_args{"bag", "play", bag_path};
+  for (const auto& arg : remaining) {
+    if (arg == "--") {
+      continue;
+    }
+
+    if (arg == "--ros-args") {
+      break;
+    }
+
+    cmd_args.push_back(arg);
+  }
+
+  return cmd_args;
+}
+
+PluginVec load_plugins(pluginlib::ClassLoader<ianvs::RosbagPlayPlugin>& loader,
+                       const rclcpp::Logger& logger) {
+  PluginVec plugins;
+  const auto classes = loader.getDeclaredClasses();
+
+  std::stringstream ss;
+  ss << "[";
+  auto iter = classes.begin();
+  while (iter != classes.end()) {
+    ss << *iter;
+    ++iter;
+    if (iter != classes.end()) {
+      ss << ", ";
+    }
+  }
+  ss << "]";
+  RCLCPP_DEBUG_STREAM(logger, "Loading plugin classes: " << ss.str());
+
+  for (const auto& to_load : classes) {
+    try {
+      plugins.push_back(loader.createSharedInstance(to_load));
+    } catch (const pluginlib::PluginlibException& e) {
+      RCLCPP_ERROR_STREAM(
+          logger, "Unable to load registered plugin '" << to_load << "': " << e.what());
+    }
+  }
+
+  return plugins;
+}
+
+std::vector<std::string> process_bag(const std::filesystem::path& bag_path,
+                                     const PluginVec& plugins,
+                                     const std::vector<std::string>& remaining) {
+  if (!std::filesystem::exists(bag_path)) {
+    return {};
+  }
+
+  rosbag2_storage::StorageOptions opts;
+  opts.uri = bag_path;
+  auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(opts);
+  if (!reader) {
+    return {};
+  }
+
+  reader->open(opts);
+  for (const auto& plugin : plugins) {
+    plugin->on_start(*reader);
+  }
+
+  auto cmd_args = get_bag_args(bag_path, remaining);
+  for (const auto& plugin : plugins) {
+    cmd_args = plugin->modify_args(cmd_args);
+  }
+
+  return cmd_args;
+}
+
+void cleanup(PluginVec& plugins) {
+  for (const auto& plugin : plugins) {
+    plugin->on_stop();
+  }
+
+  plugins.clear();
+  rclcpp::shutdown();
+}
+
 int main(int argc, char** argv) {
   const auto ros_argv = get_ros_args(argc, argv);
   rclcpp::init(ros_argv.size(), ros_argv.data());
@@ -130,29 +179,35 @@ int main(int argc, char** argv) {
   bool verbose = false;
   app.add_flag("-v,--verbose", verbose, "show transform results");
 
-  std::vector<std::shared_ptr<ianvs::RosbagPlayPlugin>> plugins;
   pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader("ianvs",
                                                          "ianvs::RosbagPlayPlugin");
-  const auto classes = loader.getDeclaredClasses();
-  for (const auto& to_load : classes) {
-    try {
-      plugins.push_back(loader.createSharedInstance(to_load));
-    } catch (const pluginlib::PluginlibException& e) {
-      RCLCPP_ERROR_STREAM(
-          node->get_logger(),
-          "Unable to load registered plugin '" << to_load << "': " << e.what());
-    }
+
+  auto plugins = load_plugins(loader, node->get_logger());
+  for (const auto& plugin : plugins) {
+    plugin->add_options(app);
   }
 
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError& e) {
+    cleanup(plugins);
     return app.exit(e);
   }
 
-  const auto cmd_args = get_bag_args(bag, app.remaining(), {});
+  const auto cmd_args = process_bag(bag, plugins, app.remaining());
+  if (cmd_args.empty()) {
+    cleanup(plugins);
+    return 1;
+  }
+
+  rclcpp::executors::MultiThreadedExecutor executor;
   node->start(cmd_args);
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return node->stop();
+  executor.add_node(node);
+  while (rclcpp::ok() && node->running) {
+    executor.spin_once(1000ns);
+  }
+
+  const auto ret = node->stop();
+  cleanup(plugins);
+  return ret;
 }

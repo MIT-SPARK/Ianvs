@@ -1,6 +1,8 @@
 
 #include <map>
 
+#include <rosbag2_transport/reader_writer_factory.hpp>
+
 #include "ianvs/app/rosbag_play_plugins.h"
 #include "ianvs/detail/string_transforms.h"
 
@@ -13,6 +15,7 @@ class TopicRemapPlugin : public RosbagPlayPlugin {
   TopicRemapPlugin();
 
   void init(std::shared_ptr<rclcpp::Node>) override {}
+  std::vector<std::string> modify_args(const std::vector<std::string>& args) override;
   void add_options(CLI::App& app) override;
   void on_start(rosbag2_cpp::Reader& reader,
                 const rclcpp::Logger* logger = nullptr) override;
@@ -28,6 +31,27 @@ TopicRemapPlugin::TopicRemapPlugin() {}
 void TopicRemapPlugin::add_options(CLI::App& app) {
   app.add_option("-t,--topic-substitution", remaps)
       ->description("apply remap to topics (match and substituion are separated by :)");
+}
+
+using ArgVec = std::vector<std::string>;
+
+ArgVec TopicRemapPlugin::modify_args(const ArgVec& args) {
+  bool added_remap = false;
+  std::vector<std::string> new_args;
+  for (const auto& arg : args) {
+    new_args.push_back(arg);
+    if (arg == "--remap") {
+      new_args.insert(new_args.end(), bag_args.begin(), bag_args.end());
+      added_remap = true;
+    }
+  }
+
+  if (!added_remap && !bag_args.empty()) {
+    new_args.push_back("--remap");
+    new_args.insert(new_args.end(), bag_args.begin(), bag_args.end());
+  }
+
+  return new_args;
 }
 
 void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader,
