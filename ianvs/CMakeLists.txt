@@ -55,6 +55,7 @@ endif()
 add_library(
   ${PROJECT_NAME}_plugins SHARED src/app/static_tf_plugin.cpp
                                  src/app/topic_remap_plugin.cpp
+                                 src/app/signal_stop_plugin.cpp
 )
 target_link_libraries(
   ${PROJECT_NAME}_plugins PUBLIC ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
