@@ -163,6 +163,13 @@ int main(int argc, char** argv) {
   rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
 
   auto node = std::make_shared<BagWrapper>();
+  pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader("ianvs",
+                                                         "ianvs::RosbagPlayPlugin");
+
+  auto plugins = load_plugins(loader, node->get_logger());
+  for (const auto& plugin : plugins) {
+    plugin->init(node);
+  }
 
   CLI::App app("Utility to play a rosbag after modfying and publishing transforms");
   argv = app.ensure_utf8(argv);
@@ -178,10 +185,6 @@ int main(int argc, char** argv) {
   bool verbose = false;
   app.add_flag("-v,--verbose", verbose, "show transform results");
 
-  pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader("ianvs",
-                                                         "ianvs::RosbagPlayPlugin");
-
-  auto plugins = load_plugins(loader, node->get_logger());
   for (const auto& plugin : plugins) {
     plugin->add_options(app);
   }
