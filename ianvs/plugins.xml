@@ -1,0 +1,8 @@
+<library path="ianvs_plugins">
+  <class type="ianvs::StaticTfPlugin" base_class_type="ianvs::RosbagPlayPlugin">
+    <description>Plugin to remap frame IDs and rebroadcast static TFs.</description>
+  </class>
+  <class type="ianvs::TopicRemapPlugin" base_class_type="ianvs::RosbagPlayPlugin">
+    <description>Plugin to remap topics by regex.</description>
+  </class>
+</library>
