@@ -238,8 +238,16 @@ typename T::Response::SharedPtr call_service(rclcpp::Client<T>& client,
                                              NodeHandle* const nh = nullptr) {
   using namespace std::chrono_literals;
 
+  auto start = std::chrono::steady_clock::now();
+  const std::chrono::milliseconds timeout(timeout_ms);
   while (!client.wait_for_service(10ms) && rclcpp::ok()) {
+    const std::chrono::duration<double> diff = std::chrono::steady_clock::now() - start;
+    if (timeout > std::chrono::milliseconds::zero() && diff > timeout) {
+      return nullptr;
+    }
+
     // TODO(nathan) logging
+
     if (nh) {
       auto base = nh->node().get<rclcpp::node_interfaces::NodeBaseInterface>();
       rclcpp::spin_some(base);
@@ -248,12 +256,15 @@ typename T::Response::SharedPtr call_service(rclcpp::Client<T>& client,
 
   bool valid = false;
   auto result = client.async_send_request(req);
-  auto start = std::chrono::steady_clock::now();
-  std::chrono::milliseconds timeout(timeout_ms);
   while (rclcpp::ok()) {
     const std::chrono::duration<double> diff = std::chrono::steady_clock::now() - start;
     if (timeout > std::chrono::milliseconds::zero() && diff > timeout) {
       break;
+    }
+
+    if (nh) {
+      auto base = nh->node().get<rclcpp::node_interfaces::NodeBaseInterface>();
+      rclcpp::spin_some(base);
     }
 
     if (result.wait_for(10ms) == std::future_status::ready) {
