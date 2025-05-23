@@ -104,5 +104,5 @@ ament_python_install_package(${PROJECT_NAME})
 
 pluginlib_export_plugin_description_file(ianvs plugins.xml)
 ament_export_targets(${PROJECT_NAME}-exports HAS_LIBRARY_TARGET)
-ament_export_dependencies(message_filters rclcpp sensor_msgs std_srvs)
+ament_export_dependencies(message_filters rclcpp sensor_msgs std_srvs CLI11)
 ament_package()
