@@ -137,7 +137,8 @@ std::optional<std::regex> get_topic_filter(const std::vector<std::string>& filte
 
 void merge_bags(const std::vector<std::filesystem::path>& inputs,
                 const std::filesystem::path& output_path,
-                const std::vector<std::string>& topics) {
+                const std::vector<std::string>& topics,
+                const std::vector<std::string>& to_exclude) {
   rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
   std::cout << "Merging " << print_bag_list(inputs) << " -> " << output_path
             << std::endl;
@@ -158,6 +159,7 @@ void merge_bags(const std::vector<std::filesystem::path>& inputs,
   }
 
   const auto topic_filter = get_topic_filter(filters);
+  const auto exclude_filter = get_topic_filter(to_exclude);
 
   rosbag2_storage::StorageOptions output_options;
   output_options.uri = output_path;
@@ -182,6 +184,13 @@ void merge_bags(const std::vector<std::filesystem::path>& inputs,
   while (to_write) {
     if (topic_filter &&
         !std::regex_match(to_write.msg->topic_name, match, *topic_filter)) {
+      fill_messages(readers, msgs);
+      to_write = get_next_message(msgs);
+      continue;
+    }
+
+    if (exclude_filter &&
+        std::regex_match(to_write.msg->topic_name, match, *exclude_filter)) {
       fill_messages(readers, msgs);
       to_write = get_next_message(msgs);
       continue;
@@ -227,12 +236,14 @@ int main(int argc, char** argv) {
 
   std::filesystem::path output;
   std::vector<std::string> topics;
+  std::vector<std::string> exclude;
   std::vector<std::filesystem::path> bags;
   app.add_option("bags", bags)
       ->check(CLI::ExistingPath)
       ->description("bags to take topics from");
   app.add_option("-o,--output", output)->description("optional output bag");
   app.add_option("-t,--topics", topics)->description("topics to include");
+  app.add_option("-e,--exclude", exclude)->description("topics to exclude");
 
   try {
     app.parse(argc, argv);
@@ -240,7 +251,7 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
-  if (bags.size() <= 1) {
+  if (bags.empty() || (bags.size() == 1 && topics.empty() && exclude.empty())) {
     return 0;  // no need to do any work
   }
 
@@ -259,7 +270,7 @@ int main(int argc, char** argv) {
     std::filesystem::rename(output, to_bag);
   }
 
-  merge_bags(bags, output, topics);
+  merge_bags(bags, output, topics, exclude);
   if (cleanup) {
     std::filesystem::remove_all(to_bag);
   }
