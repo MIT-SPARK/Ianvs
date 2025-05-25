@@ -1,50 +1,12 @@
 #include <filesystem>
 #include <map>
-#include <regex>
 #include <set>
 #include <vector>
 
 #include <CLI/CLI.hpp>
 #include <rosbag2_transport/reader_writer_factory.hpp>
 
-struct StringTransform {
-  enum class Type { Substitute, Filter, Prefix };
-
-  StringTransform(const std::string& expr, const std::string& sub)
-      : expr(std::regex(expr)), sub(sub) {}
-
-  static StringTransform from_arg(Type type,
-                                  const std::string& arg,
-                                  const rclcpp::Logger& logger) {
-    switch (type) {
-      case Type::Substitute: {
-        const auto pos = arg.find(":");
-        if (pos == std::string::npos) {
-          RCLCPP_WARN_STREAM(logger, "Invalid substitution: '" << arg << "'");
-          return StringTransform("", "");
-        }
-
-        const auto expr = arg.substr(0, pos);
-        const auto sub = arg.substr(pos + 1);
-        return StringTransform(expr, sub);
-      }
-      case Type::Filter:
-        return StringTransform(arg, "");
-      case Type::Prefix:
-        return StringTransform("^.+", arg + "$&");
-      default:
-        return StringTransform("", "");
-    }
-  }
-
-  std::string apply(const std::string& frame_id) const {
-    std::regex re(expr);
-    return std::regex_replace(frame_id, re, sub);
-  }
-
-  const std::regex expr;
-  const std::string sub;
-};
+#include "ianvs/detail/string_transforms.h"
 
 using rosbag2_transport::ReaderWriterFactory;
 
@@ -78,7 +40,6 @@ struct ReaderInfo {
     while (reader->has_next()) {
       auto msg = reader->read_next();
       if (!msg) {
-        // std::cout << "Reader has invalid message!" << std::endl;
         continue;
       }
 
@@ -89,11 +50,9 @@ struct ReaderInfo {
         continue;
       }
 
-      // std::cout << "Got valid message!" << std::endl;
       return {msg, &iter->second};
     }
 
-    // std::cout << "Reader has no messages!" << std::endl;
     return {};
   }
 
@@ -107,16 +66,13 @@ using MsgVec = std::vector<MessageInfo>;
 void fill_messages(const ReaderVec& readers, MsgVec& msgs) {
   for (size_t i = 0; i < readers.size(); ++i) {
     if (!readers[i]) {
-      // std::cout << "Invalid reader in list: " << i << "!" << std::endl;
       continue;
     }
 
     if (msgs[i]) {
-      // std::cout << "Previous message present: " << i << "!" << std::endl;
       continue;
     }
 
-    // std::cout << "Updated message: " << i << "!" << std::endl;
     msgs[i] = readers[i].next();
   }
 }
@@ -143,9 +99,65 @@ MessageInfo get_next_message(MsgVec& msgs) {
   return best_info;
 }
 
+std::string print_bag_list(const std::vector<std::filesystem::path>& paths) {
+  std::stringstream ss;
+  ss << "[";
+  auto iter = paths.begin();
+  while (iter != paths.end()) {
+    ss << *iter;
+    ++iter;
+    if (iter != paths.end()) {
+      ss << ", ";
+    }
+  }
+
+  ss << "]";
+  return ss.str();
+}
+
+using ianvs::detail::StringTransform;
+
+std::optional<std::regex> get_topic_filter(const std::vector<std::string>& filters) {
+  std::stringstream ss;
+  auto iter = filters.begin();
+  while (iter != filters.end()) {
+    ss << *iter;
+    ++iter;
+    if (iter != filters.end()) {
+      ss << "|";
+    }
+  }
+
+  if (ss.str().empty()) {
+    return std::nullopt;
+  }
+
+  return std::regex(ss.str());
+}
+
 void merge_bags(const std::vector<std::filesystem::path>& inputs,
-                const std::filesystem::path& output_path) {
+                const std::filesystem::path& output_path,
+                const std::vector<std::string>& topics) {
   rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
+  std::cout << "Merging " << print_bag_list(inputs) << " -> " << output_path
+            << std::endl;
+
+  std::vector<std::string> filters;
+  std::vector<StringTransform> transforms;
+  for (const auto& topic : topics) {
+    const auto pos = topic.find(":");
+    if (pos == std::string::npos) {
+      // no need to parse filter
+      filters.push_back(topic);
+      continue;
+    }
+
+    filters.push_back(topic.substr(0, pos));
+    transforms.push_back(
+        StringTransform::from_arg(StringTransform::Type::Substitute, topic));
+  }
+
+  const auto topic_filter = get_topic_filter(filters);
 
   rosbag2_storage::StorageOptions output_options;
   output_options.uri = output_path;
@@ -162,13 +174,27 @@ void merge_bags(const std::vector<std::filesystem::path>& inputs,
     readers.emplace_back(input);
   }
 
+  std::smatch match;
   std::set<std::string> seen;
   MsgVec msgs(readers.size());
   fill_messages(readers, msgs);
   MessageInfo to_write = get_next_message(msgs);
   while (to_write) {
+    if (topic_filter &&
+        !std::regex_match(to_write.msg->topic_name, match, *topic_filter)) {
+      fill_messages(readers, msgs);
+      to_write = get_next_message(msgs);
+      continue;
+    }
+
+    for (const auto& transform : transforms) {
+      to_write.msg->topic_name = transform.apply(to_write.msg->topic_name);
+    }
+
     if (!seen.count(to_write.msg->topic_name)) {
-      writer.create_topic(*to_write.metadata);
+      auto metadata = *to_write.metadata;
+      metadata.name = to_write.msg->topic_name;
+      writer.create_topic(metadata);
       seen.insert(to_write.msg->topic_name);
     }
 
@@ -179,10 +205,11 @@ void merge_bags(const std::vector<std::filesystem::path>& inputs,
 }
 
 std::filesystem::path normalize_bag_path(const std::filesystem::path& bag_path) {
-  if (std::filesystem::is_directory(bag_path)) {
-    return bag_path;
+  auto normed_path = std::filesystem::canonical(bag_path);
+  if (std::filesystem::is_directory(normed_path)) {
+    return normed_path;
   } else {
-    return bag_path.parent_path();
+    return normed_path.parent_path();
   }
 }
 
@@ -198,16 +225,14 @@ int main(int argc, char** argv) {
   argv = app.ensure_utf8(argv);
   app.allow_extras();
 
-  std::filesystem::path from_bag;
-  std::filesystem::path to_bag;
   std::filesystem::path output;
-  app.add_option("from_bag", from_bag)
+  std::vector<std::string> topics;
+  std::vector<std::filesystem::path> bags;
+  app.add_option("bags", bags)
       ->check(CLI::ExistingPath)
-      ->description("bag to take topics from");
-  app.add_option("to_bag", to_bag)
-      ->check(CLI::ExistingPath)
-      ->description("bag to write topics to");
+      ->description("bags to take topics from");
   app.add_option("-o,--output", output)->description("optional output bag");
+  app.add_option("-t,--topics", topics)->description("topics to include");
 
   try {
     app.parse(argc, argv);
@@ -215,22 +240,28 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
-  from_bag = normalize_bag_path(from_bag);
-  to_bag = normalize_bag_path(to_bag);
-
-  bool cleanup = false;
-  if (output.empty()) {
-    cleanup = true;
-    output = get_temp_output(to_bag);
+  if (bags.size() <= 1) {
+    return 0;  // no need to do any work
   }
 
-  std::cout << "Merging [" << from_bag << ", " << to_bag << "] -> "
-            << (cleanup ? to_bag : output) << std::endl;
+  for (auto& path : bags) {
+    path = normalize_bag_path(path);
+  }
 
-  merge_bags({from_bag, to_bag}, output);
+  // if the output is empty, we're merging to the last path in the input bags
+  bool cleanup = false;
+  auto& to_bag = bags.back();
+  if (output.empty()) {
+    cleanup = true;
+    output = to_bag;
+    to_bag = get_temp_output(to_bag);
+    std::cout << "Moving last bag " << output << " -> " << to_bag << std::endl;
+    std::filesystem::rename(output, to_bag);
+  }
+
+  merge_bags(bags, output, topics);
   if (cleanup) {
     std::filesystem::remove_all(to_bag);
-    std::filesystem::rename(output, to_bag);
   }
 
   return 0;
