@@ -51,29 +51,30 @@ if(NOT BUILD_SHARED_LIBS)
   set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
 
+add_library(ament_shim INTERFACE)
+ament_target_dependencies(ament_shim INTERFACE tf2_msgs tf2_ros)
+
 # various plugins for executables to load
 add_library(
-  ${PROJECT_NAME}_plugins SHARED src/app/static_tf_plugin.cpp
-                                 src/app/topic_remap_plugin.cpp
-                                 src/app/signal_stop_plugin.cpp
+  ${PROJECT_NAME}_plugins SHARED
+  src/app/static_tf_plugin.cpp src/app/topic_remap_plugin.cpp
+  src/app/signal_stop_plugin.cpp
 )
 target_link_libraries(
   ${PROJECT_NAME}_plugins PUBLIC ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
+  PRIVATE ament_shim
 )
-# TODO(nathan) private shim dep
-ament_target_dependencies(${PROJECT_NAME}_plugins PUBLIC tf2_msgs tf2_ros)
 
 # executables
 add_executable(play_rosbag app/play_rosbag.cpp)
 target_link_libraries(
   play_rosbag PRIVATE ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
-                      Boost::system Boost::filesystem CLI11::CLI11
+                      Boost::system Boost::filesystem
 )
 
 add_executable(merge_rosbags app/merge_rosbags.cpp)
 target_link_libraries(
   merge_rosbags PRIVATE ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
-                        CLI11::CLI11
 )
 
 pybind11_add_module(
