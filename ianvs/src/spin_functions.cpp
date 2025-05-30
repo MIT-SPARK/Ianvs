@@ -65,19 +65,22 @@ void spinWhileClockPresent(NodeHandle nh) {
   rclcpp::WallRate r(50);
   auto base = nh.node().get<rclcpp::node_interfaces::NodeBaseInterface>();
 
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(base);
+
   RCLCPP_INFO(nh.logger(), "Waiting for bag to start");
   while (rclcpp::ok() && !haveClock(nh)) {
-    rclcpp::spin_some(base);
+    executor.spin_some();
     r.sleep();
   }
 
   RCLCPP_INFO(nh.logger(), "Running...");
   while (rclcpp::ok() && haveClock(nh) && !functor.should_exit) {
-    rclcpp::spin_some(base);
+    executor.spin_some();
     r.sleep();
   }
 
-  rclcpp::spin_some(base);  // make sure all the callbacks are processed
+  executor.spin_some();  // make sure all the callbacks are processed
   RCLCPP_INFO(nh.logger(), "Exiting!");
 }
 
@@ -87,13 +90,16 @@ void spinUntilExitRequested(NodeHandle nh) {
   rclcpp::WallRate r(50);
   auto base = nh.node().get<rclcpp::node_interfaces::NodeBaseInterface>();
 
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(base);
+
   RCLCPP_INFO(nh.logger(), "Running...");
   while (rclcpp::ok() && !functor.should_exit) {
-    rclcpp::spin_some(base);
+    executor.spin_some();
     r.sleep();
   }
 
-  rclcpp::spin_some(base);
+  executor.spin_some();
   RCLCPP_INFO(nh.logger(), "Exiting!");
 }
 
