@@ -317,7 +317,10 @@ class BagWrapper : public rclcpp::Node {
 
 int main(int argc, char** argv) {
   CLI::App app("Utility to play a rosbag after modfying and publishing transforms");
-  argv = app.ensure_utf8(argv);
+
+  // TODO(when 22.04 support ends): re-enable this once all systems use CLI11 >= 2.3.2
+  // argv = app.ensure_utf8(argv);
+
   app.allow_extras();
 
   // NOTE(nathan) for whatever reason, this doesn't get handled correctly when we use
