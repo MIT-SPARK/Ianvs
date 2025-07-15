@@ -101,7 +101,7 @@ class NodeHandle {
                      CallbackT&& callback,
                      GroupPtr group = nullptr);
 
-  std::string resolve_name(const std::string& name, bool is_service);
+  std::string resolve_name(const std::string& name, bool is_service) const;
 
   std::string node_name() const {
     return node_.get<rclcpp::node_interfaces::NodeBaseInterface>()

@@ -22,7 +22,7 @@ NodeHandle& NodeHandle::operator/=(const std::string& ns) {
   return *this;
 }
 
-std::string NodeHandle::resolve_name(const std::string& name, bool is_service) {
+std::string NodeHandle::resolve_name(const std::string& name, bool is_service) const {
   auto base = node_.get<rclcpp::node_interfaces::NodeBaseInterface>();
   return base->resolve_topic_or_service_name(join_namespace(ns_, name), is_service);
 }
