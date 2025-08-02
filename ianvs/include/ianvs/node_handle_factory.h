@@ -47,6 +47,8 @@ class NodeHandleFactory {
                                                  const std::string& ns = "");
   static void addNode(const std::string& name, NodeHandle::NodeInterface node);
 
+  static void clear();
+
  private:
   NodeHandleFactory() = default;
   static NodeHandleFactory& instance();

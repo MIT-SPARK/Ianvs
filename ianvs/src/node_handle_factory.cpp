@@ -65,6 +65,11 @@ void NodeHandleFactory::addNode(const std::string& name, NodeHandle::NodeInterfa
   instance().nodes_.emplace(name, nh);
 }
 
+void NodeHandleFactory::clear() {
+  auto& curr = instance();
+  curr.nodes_.clear();
+}
+
 NodeHandleFactory& NodeHandleFactory::instance() {
   if (!s_instance_) {
     s_instance_.reset(new NodeHandleFactory());
