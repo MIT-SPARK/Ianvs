@@ -77,7 +77,9 @@ void spinWhileClockPresent(NodeHandle nh) {
     r.sleep();
   }
 
-  rclcpp::spin_some(base);  // make sure all the callbacks are processed
+  if (rclcpp::ok()) {
+    rclcpp::spin_some(base);  // make sure all the callbacks are processed
+  }
   RCLCPP_INFO(nh.logger(), "Exiting!");
 }
 
@@ -93,7 +95,9 @@ void spinUntilExitRequested(NodeHandle nh) {
     r.sleep();
   }
 
-  rclcpp::spin_some(base);
+  if (rclcpp::ok()) {
+    rclcpp::spin_some(base);
+  }
   RCLCPP_INFO(nh.logger(), "Exiting!");
 }
 
