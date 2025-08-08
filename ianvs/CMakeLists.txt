@@ -22,17 +22,24 @@ find_package(sensor_msgs REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 
+find_package(glog REQUIRED)
+
 find_package(Python COMPONENTS Interpreter Development)
 find_package(pybind11 CONFIG REQUIRED)
 
 add_library(
   ${PROJECT_NAME}
-  src/image_publisher.cpp src/image_subscription.cpp src/node_handle.cpp
-  src/node_handle_factory.cpp src/spin_functions.cpp
+  src/glog_sink.cpp
+  src/image_publisher.cpp
+  src/image_subscription.cpp
+  src/node_handle.cpp
+  src/node_handle_factory.cpp
+  src/node_init.cpp
+  src/spin_functions.cpp
 )
 add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_link_libraries(
-  ${PROJECT_NAME} PUBLIC message_filters::message_filters rclcpp::rclcpp
+  ${PROJECT_NAME} PUBLIC message_filters::message_filters rclcpp::rclcpp glog::glog
 )
 target_include_directories(
   ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -78,5 +85,5 @@ install(TARGETS _${PROJECT_NAME}_bindings
 ament_python_install_package(${PROJECT_NAME})
 
 ament_export_targets(${PROJECT_NAME}-exports HAS_LIBRARY_TARGET)
-ament_export_dependencies(message_filters rclcpp sensor_msgs std_srvs)
+ament_export_dependencies(glog message_filters rclcpp sensor_msgs std_srvs)
 ament_package()
