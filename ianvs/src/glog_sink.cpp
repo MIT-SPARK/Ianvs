@@ -9,6 +9,8 @@ RosGlogSink::RosGlogSink(const rclcpp::Logger& logger)
   google::AddLogSink(impl_.get());
 }
 
+RosGlogSink::RosGlogSink(const NodeHandle& nh) : RosGlogSink(nh.logger()) {}
+
 RosGlogSink::~RosGlogSink() { google::RemoveLogSink(impl_.get()); }
 
 RosGlogSink::Impl::Impl(const rclcpp::Logger& logger) : logger_(logger) {}

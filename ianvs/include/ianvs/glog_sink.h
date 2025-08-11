@@ -3,10 +3,13 @@
 
 #include <rclcpp/logger.hpp>
 
+#include "ianvs/node_handle.h"
+
 namespace ianvs {
 
 struct RosGlogSink {
   explicit RosGlogSink(const rclcpp::Logger& logger);
+  explicit RosGlogSink(const NodeHandle& nh);
   ~RosGlogSink();
 
   struct Impl : google::LogSink {
