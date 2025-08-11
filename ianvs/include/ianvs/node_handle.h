@@ -183,7 +183,7 @@ typename NodeHandle::Service<T> NodeHandle::create_service(const std::string& na
                                                            const rclcpp::QoS& qos,
                                                            GroupPtr group) {
   return create_service<T>(
-      name,
+      join_namespace(ns_, name),
       std::bind(callback, class_pointer, std::placeholders::_1, std::placeholders::_2),
       qos,
       group);
