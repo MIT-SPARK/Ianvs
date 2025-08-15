@@ -27,8 +27,12 @@ find_package(pybind11 CONFIG REQUIRED)
 
 add_library(
   ${PROJECT_NAME}
-  src/image_publisher.cpp src/image_subscription.cpp src/node_handle.cpp
-  src/node_handle_factory.cpp src/spin_functions.cpp
+  src/image_publisher.cpp
+  src/image_subscription.cpp
+  src/node_handle.cpp
+  src/node_handle_factory.cpp
+  src/node_init.cpp
+  src/spin_functions.cpp
 )
 add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_link_libraries(

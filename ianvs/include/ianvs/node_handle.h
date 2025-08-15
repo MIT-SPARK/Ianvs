@@ -57,6 +57,7 @@ class NodeHandle {
   NodeInterface& node() { return node_; }
   const NodeInterface& node() const { return node_; }
   const std::string& ns() const { return ns_; }
+  static NodeHandle this_node(const std::string& ns = "");
 
   template <typename InterfaceT>
   std::shared_ptr<InterfaceT> as();
@@ -104,8 +105,8 @@ class NodeHandle {
   std::string resolve_name(const std::string& name, bool is_service) const;
 
   std::string node_name() const {
-    return node_.get<rclcpp::node_interfaces::NodeBaseInterface>()
-        ->get_fully_qualified_name();
+    using rclcpp::node_interfaces::NodeBaseInterface;
+    return node_.get<NodeBaseInterface>()->get_fully_qualified_name();
   }
 
   rclcpp::Logger logger() const {
@@ -114,6 +115,10 @@ class NodeHandle {
 
   rclcpp::Time now() const {
     return node_.get<rclcpp::node_interfaces::NodeClockInterface>()->get_clock()->now();
+  }
+
+  rclcpp::Clock::SharedPtr clock() {
+    return node_.get<rclcpp::node_interfaces::NodeClockInterface>()->get_clock();
   }
 
  private:
@@ -178,7 +183,7 @@ typename NodeHandle::Service<T> NodeHandle::create_service(const std::string& na
                                                            const rclcpp::QoS& qos,
                                                            GroupPtr group) {
   return create_service<T>(
-      name,
+      join_namespace(ns_, name),
       std::bind(callback, class_pointer, std::placeholders::_1, std::placeholders::_2),
       qos,
       group);

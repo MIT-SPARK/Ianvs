@@ -1,5 +1,7 @@
 #include "ianvs/node_handle.h"
 
+#include "ianvs/node_init.h"
+
 namespace ianvs {
 
 std::string join_namespace(const std::string& ns, const std::string& topic) {
@@ -20,6 +22,15 @@ NodeHandle::NodeHandle(NodeInterface node, const std::string& ns)
 NodeHandle& NodeHandle::operator/=(const std::string& ns) {
   ns_ = join_namespace(ns_, ns);
   return *this;
+}
+
+NodeHandle NodeHandle::this_node(const std::string& ns) {
+  auto curr_node = CurrentNode::get();
+  if (!curr_node) {
+    throw std::runtime_error("Node not initialized properly!");
+  }
+
+  return NodeHandle(*curr_node) / ns;
 }
 
 std::string NodeHandle::resolve_name(const std::string& name, bool is_service) const {
