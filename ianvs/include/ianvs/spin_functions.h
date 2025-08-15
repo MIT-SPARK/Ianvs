@@ -39,10 +39,12 @@
 
 namespace ianvs {
 
-void spinWhileClockPresent(NodeHandle nh);
+void spinWhileClockPresent(NodeHandle nh, rclcpp::Executor* executor = nullptr);
 
-void spinUntilExitRequested(NodeHandle nh);
+void spinUntilExitRequested(NodeHandle nh, rclcpp::Executor* executor = nullptr);
 
-void spinAndWait(NodeHandle nh, bool exit_after_clock = false);
+void spinAndWait(NodeHandle nh,
+                 bool exit_after_clock = false,
+                 rclcpp::Executor* executor = nullptr);
 
 }  // namespace ianvs
