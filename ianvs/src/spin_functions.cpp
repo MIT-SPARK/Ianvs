@@ -39,6 +39,20 @@
 
 namespace ianvs {
 
+using BaseInterface = std::shared_ptr<rclcpp::node_interfaces::NodeBaseInterface>;
+
+namespace {
+
+inline void spin_some(const BaseInterface& node, rclcpp::Executor* exec) {
+  if (exec) {
+    exec->spin_node_some(node);
+  } else {
+    rclcpp::spin_some(node);
+  }
+}
+
+}  // namespace
+
 struct ShutdownMonitor {
   explicit ShutdownMonitor(NodeHandle nh)
       : should_exit(false),
@@ -59,7 +73,7 @@ bool haveClock(NodeHandle nh) {
   return graph->count_publishers("/clock") > 0;
 }
 
-void spinWhileClockPresent(NodeHandle nh) {
+void spinWhileClockPresent(NodeHandle nh, rclcpp::Executor* executor) {
   ShutdownMonitor functor(nh);
 
   rclcpp::WallRate r(50);
@@ -67,23 +81,24 @@ void spinWhileClockPresent(NodeHandle nh) {
 
   RCLCPP_INFO(nh.logger(), "Waiting for bag to start");
   while (rclcpp::ok() && !haveClock(nh)) {
-    rclcpp::spin_some(base);
+    spin_some(base, executor);
     r.sleep();
   }
 
   RCLCPP_INFO(nh.logger(), "Running...");
   while (rclcpp::ok() && haveClock(nh) && !functor.should_exit) {
-    rclcpp::spin_some(base);
+    spin_some(base, executor);
     r.sleep();
   }
 
   if (rclcpp::ok()) {
-    rclcpp::spin_some(base);  // make sure all the callbacks are processed
+    spin_some(base, executor);
   }
+
   RCLCPP_INFO(nh.logger(), "Exiting!");
 }
 
-void spinUntilExitRequested(NodeHandle nh) {
+void spinUntilExitRequested(NodeHandle nh, rclcpp::Executor* executor) {
   ShutdownMonitor functor(nh);
 
   rclcpp::WallRate r(50);
@@ -91,21 +106,22 @@ void spinUntilExitRequested(NodeHandle nh) {
 
   RCLCPP_INFO(nh.logger(), "Running...");
   while (rclcpp::ok() && !functor.should_exit) {
-    rclcpp::spin_some(base);
+    spin_some(base, executor);
     r.sleep();
   }
 
   if (rclcpp::ok()) {
-    rclcpp::spin_some(base);
+    spin_some(base, executor);
   }
+
   RCLCPP_INFO(nh.logger(), "Exiting!");
 }
 
-void spinAndWait(NodeHandle nh, bool exit_after_clock) {
+void spinAndWait(NodeHandle nh, bool exit_after_clock, rclcpp::Executor* executor) {
   if (exit_after_clock) {
-    spinWhileClockPresent(nh);
+    spinWhileClockPresent(nh, executor);
   } else {
-    spinUntilExitRequested(nh);
+    spinUntilExitRequested(nh, executor);
   }
 }
 

@@ -19,9 +19,12 @@ struct MessageWaitFunctor {
 
     rclcpp::WallRate r(10.0);
     while (rclcpp::ok() && !msg_) {
-      r.sleep();
       if (spin_required) {
         rclcpp::spin_some(base);
+      }
+
+      if (!msg_) {
+        r.sleep();
       }
 
       const std::chrono::duration<double> diff =
