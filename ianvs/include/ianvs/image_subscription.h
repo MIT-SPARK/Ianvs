@@ -11,13 +11,12 @@
 
 namespace ianvs {
 
-class ImageSubscription
-    : public message_filters::SimpleFilter<sensor_msgs::msg::Image> {
+class ImageSubscription : public message_filters::SimpleFilter<sensor_msgs::msg::Image> {
  public:
-  using NodeInterface = rclcpp::node_interfaces::NodeInterfaces<
-      rclcpp::node_interfaces::NodeParametersInterface,
-      rclcpp::node_interfaces::NodeTimersInterface,
-      rclcpp::node_interfaces::NodeTopicsInterface>;
+  using NodeInterface =
+      rclcpp::node_interfaces::NodeInterfaces<rclcpp::node_interfaces::NodeParametersInterface,
+                                              rclcpp::node_interfaces::NodeTimersInterface,
+                                              rclcpp::node_interfaces::NodeTopicsInterface>;
 
   using Callback = std::function<void(const sensor_msgs::msg::Image::ConstSharedPtr&)>;
 
@@ -33,8 +32,7 @@ class ImageSubscription
                     const MethodT& method,
                     ObjT* obj,
                     const rclcpp::QoS& qos = rclcpp::SensorDataQoS())
-      : ImageSubscription(
-            node, topic, qos, std::bind(method, obj, std::placeholders::_1)) {}
+      : ImageSubscription(node, topic, qos, std::bind(method, obj, std::placeholders::_1)) {}
 
   ~ImageSubscription();
   ImageSubscription(const ImageSubscription& other) = delete;
@@ -42,8 +40,7 @@ class ImageSubscription
   ImageSubscription(ImageSubscription&& other) = delete;
   ImageSubscription& operator=(ImageSubscription&& other) = delete;
 
-  void subscribe(const std::string& topic,
-                 const rclcpp::QoS& qos = rclcpp::SensorDataQoS());
+  void subscribe(const std::string& topic, const rclcpp::QoS& qos = rclcpp::SensorDataQoS());
   void unsubscribe();
 
  private:

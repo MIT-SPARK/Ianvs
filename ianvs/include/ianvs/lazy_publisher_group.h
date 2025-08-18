@@ -91,13 +91,9 @@ struct RosPublisherGroup : LazyPublisherGroup<RosPublisherGroup<T>> {
   explicit RosPublisherGroup(NodeHandle nh, const rclcpp::QoS& qos = rclcpp::QoS(1))
       : nh_(nh), qos(qos) {}
 
-  Pub make_publisher(const std::string& topic) const {
-    return nh_.create_publisher<T>(topic, qos);
-  }
+  Pub make_publisher(const std::string& topic) const { return nh_.create_publisher<T>(topic, qos); }
 
-  bool should_publish(const Pub& pub) const {
-    return pub->get_subscription_count() > 0;
-  }
+  bool should_publish(const Pub& pub) const { return pub->get_subscription_count() > 0; }
 
   void publish_msg(const Pub& pub, typename T::UniquePtr&& msg) const {
     pub->publish(std::move(msg));

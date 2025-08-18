@@ -59,14 +59,13 @@ void add(py::module_& m) {
         return ss.str();
       });
 
-  m.def("parse_encoding",
-        [](const std::string& encoding) -> std::optional<EncodingInfo> {
-          try {
-            return EncodingInfo(encoding);
-          } catch (const std::exception& e) {
-            return std::nullopt;
-          }
-        });
+  m.def("parse_encoding", [](const std::string& encoding) -> std::optional<EncodingInfo> {
+    try {
+      return EncodingInfo(encoding);
+    } catch (const std::exception& e) {
+      return std::nullopt;
+    }
+  });
 }
 
 }  // namespace ianvs::bindings::image_encodings

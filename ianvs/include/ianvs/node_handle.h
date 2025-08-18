@@ -24,8 +24,7 @@
 
 namespace ianvs {
 
-IANVS_PUBLIC std::string join_namespace(const std::string& ns,
-                                        const std::string& topic);
+IANVS_PUBLIC std::string join_namespace(const std::string& ns, const std::string& topic);
 
 class NodeHandle {
  public:
@@ -41,15 +40,15 @@ class NodeHandle {
   using GroupPtr = rclcpp::CallbackGroup::SharedPtr;
 
   // TODO(nathan) this is really only one or two interfaces away from using all of them
-  using NodeInterface = rclcpp::node_interfaces::NodeInterfaces<
-      rclcpp::node_interfaces::NodeBaseInterface,
-      rclcpp::node_interfaces::NodeClockInterface,
-      rclcpp::node_interfaces::NodeLoggingInterface,
-      rclcpp::node_interfaces::NodeGraphInterface,
-      rclcpp::node_interfaces::NodeTimersInterface,
-      rclcpp::node_interfaces::NodeTopicsInterface,
-      rclcpp::node_interfaces::NodeServicesInterface,
-      rclcpp::node_interfaces::NodeParametersInterface>;
+  using NodeInterface =
+      rclcpp::node_interfaces::NodeInterfaces<rclcpp::node_interfaces::NodeBaseInterface,
+                                              rclcpp::node_interfaces::NodeClockInterface,
+                                              rclcpp::node_interfaces::NodeLoggingInterface,
+                                              rclcpp::node_interfaces::NodeGraphInterface,
+                                              rclcpp::node_interfaces::NodeTimersInterface,
+                                              rclcpp::node_interfaces::NodeTopicsInterface,
+                                              rclcpp::node_interfaces::NodeServicesInterface,
+                                              rclcpp::node_interfaces::NodeParametersInterface>;
 
   NodeHandle(NodeInterface node, const std::string& ns = "");
   NodeHandle& operator/=(const std::string& ns);
@@ -138,24 +137,21 @@ typename NodeHandle::Publisher<T> NodeHandle::create_publisher(const std::string
 }
 
 template <typename T, typename CallbackT>
-typename NodeHandle::Subscription<T> NodeHandle::create_subscription(
-    const std::string& topic,
-    const rclcpp::QoS& qos,
-    CallbackT&& callback,
-    GroupPtr group) {
+typename NodeHandle::Subscription<T> NodeHandle::create_subscription(const std::string& topic,
+                                                                     const rclcpp::QoS& qos,
+                                                                     CallbackT&& callback,
+                                                                     GroupPtr group) {
   rclcpp::SubscriptionOptions opts;
   opts.callback_group = group;
-  return rclcpp::create_subscription<T>(
-      node_, join_namespace(ns_, topic), qos, callback, opts);
+  return rclcpp::create_subscription<T>(node_, join_namespace(ns_, topic), qos, callback, opts);
 }
 
 template <typename T, typename CallbackT, typename Cls>
-typename NodeHandle::Subscription<T> NodeHandle::create_subscription(
-    const std::string& topic,
-    const rclcpp::QoS& qos,
-    CallbackT&& callback,
-    Cls* class_pointer,
-    GroupPtr group) {
+typename NodeHandle::Subscription<T> NodeHandle::create_subscription(const std::string& topic,
+                                                                     const rclcpp::QoS& qos,
+                                                                     CallbackT&& callback,
+                                                                     Cls* class_pointer,
+                                                                     GroupPtr group) {
   return create_subscription<T>(
       topic, qos, std::bind(callback, class_pointer, std::placeholders::_1));
 }
@@ -213,16 +209,15 @@ NodeHandle::Timer NodeHandle::create_timer(std::chrono::milliseconds period_ms,
   auto base = node_.get<rclcpp::node_interfaces::NodeBaseInterface>();
   auto timer = node_.get<rclcpp::node_interfaces::NodeTimersInterface>();
   if (is_wall_time) {
-    auto to_return =
-        rclcpp::create_wall_timer(period_ms, callback, group, base.get(), timer.get());
+    auto to_return = rclcpp::create_wall_timer(period_ms, callback, group, base.get(), timer.get());
     // force autostart
     to_return->reset();
     return to_return;
   }
 
   auto clock = node_.get<rclcpp::node_interfaces::NodeClockInterface>();
-  auto to_return = rclcpp::create_timer(
-      clock->get_clock(), period_ms, callback, group, base.get(), timer.get());
+  auto to_return =
+      rclcpp::create_timer(clock->get_clock(), period_ms, callback, group, base.get(), timer.get());
   to_return->reset();
   return to_return;
 }

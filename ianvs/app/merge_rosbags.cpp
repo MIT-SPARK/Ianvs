@@ -45,8 +45,8 @@ struct ReaderInfo {
 
       auto iter = lookup.find(msg->topic_name);
       if (iter == lookup.end()) {
-        std::cout << "Error: could not find metadata for topic '" << msg->topic_name
-                  << "'" << std::endl;
+        std::cout << "Error: could not find metadata for topic '" << msg->topic_name << "'"
+                  << std::endl;
         continue;
       }
 
@@ -140,8 +140,7 @@ void merge_bags(const std::vector<std::filesystem::path>& inputs,
                 const std::vector<std::string>& topics,
                 const std::vector<std::string>& to_exclude) {
   rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
-  std::cout << "Merging " << print_bag_list(inputs) << " -> " << output_path
-            << std::endl;
+  std::cout << "Merging " << print_bag_list(inputs) << " -> " << output_path << std::endl;
 
   std::vector<std::string> filters;
   std::vector<StringTransform> transforms;
@@ -154,8 +153,7 @@ void merge_bags(const std::vector<std::filesystem::path>& inputs,
     }
 
     filters.push_back(topic.substr(0, pos));
-    transforms.push_back(
-        StringTransform::from_arg(StringTransform::Type::Substitute, topic));
+    transforms.push_back(StringTransform::from_arg(StringTransform::Type::Substitute, topic));
   }
 
   const auto topic_filter = get_topic_filter(filters);
@@ -182,15 +180,13 @@ void merge_bags(const std::vector<std::filesystem::path>& inputs,
   fill_messages(readers, msgs);
   MessageInfo to_write = get_next_message(msgs);
   while (to_write) {
-    if (topic_filter &&
-        !std::regex_match(to_write.msg->topic_name, match, *topic_filter)) {
+    if (topic_filter && !std::regex_match(to_write.msg->topic_name, match, *topic_filter)) {
       fill_messages(readers, msgs);
       to_write = get_next_message(msgs);
       continue;
     }
 
-    if (exclude_filter &&
-        std::regex_match(to_write.msg->topic_name, match, *exclude_filter)) {
+    if (exclude_filter && std::regex_match(to_write.msg->topic_name, match, *exclude_filter)) {
       fill_messages(readers, msgs);
       to_write = get_next_message(msgs);
       continue;
@@ -238,9 +234,7 @@ int main(int argc, char** argv) {
   std::vector<std::string> topics;
   std::vector<std::string> exclude;
   std::vector<std::filesystem::path> bags;
-  app.add_option("bags", bags)
-      ->check(CLI::ExistingPath)
-      ->description("bags to take topics from");
+  app.add_option("bags", bags)->check(CLI::ExistingPath)->description("bags to take topics from");
   app.add_option("-o,--output", output)->description("optional output bag");
   app.add_option("-t,--topics", topics)->description("topics to include");
   app.add_option("-e,--exclude", exclude)->description("topics to exclude");

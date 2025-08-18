@@ -26,17 +26,16 @@ struct FrameTransforms {
   explicit FrameTransforms(const std::vector<StringTransform>& transforms)
       : transforms(transforms) {}
 
-  static FrameTransforms fromConfig(const Config& config,
-                                    const rclcpp::Logger* logger) {
+  static FrameTransforms fromConfig(const Config& config, const rclcpp::Logger* logger) {
     std::vector<StringTransform> transforms;
     if (!config.filter.empty()) {
-      transforms.push_back(StringTransform::from_arg(
-          StringTransform::Type::Filter, config.filter, logger));
+      transforms.push_back(
+          StringTransform::from_arg(StringTransform::Type::Filter, config.filter, logger));
     }
 
     if (!config.prefix.empty()) {
-      transforms.push_back(StringTransform::from_arg(
-          StringTransform::Type::Prefix, config.prefix, logger));
+      transforms.push_back(
+          StringTransform::from_arg(StringTransform::Type::Prefix, config.prefix, logger));
     }
 
     for (const auto& arg : config.substitutions) {
@@ -75,8 +74,7 @@ class StaticTfPlugin : public RosbagPlayPlugin {
   void init(std::shared_ptr<rclcpp::Node> node) override;
   void add_options(CLI::App& app) override;
   std::vector<std::string> modify_args(const std::vector<std::string>& args) override;
-  void on_start(rosbag2_cpp::Reader& reader,
-                const rclcpp::Logger* logger = nullptr) override;
+  void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) override;
   void on_stop() override {}
 
  private:
@@ -122,8 +120,7 @@ ArgVec StaticTfPlugin::modify_args(const ArgVec& args) {
   return new_args;
 }
 
-void StaticTfPlugin::on_start(rosbag2_cpp::Reader& reader,
-                              const rclcpp::Logger* logger) {
+void StaticTfPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger) {
   const rclcpp::Serialization<TFMessage> serialization;
   const auto frame_transforms = FrameTransforms::fromConfig(config, logger);
 

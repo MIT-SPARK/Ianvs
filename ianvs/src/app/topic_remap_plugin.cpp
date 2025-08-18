@@ -17,8 +17,7 @@ class TopicRemapPlugin : public RosbagPlayPlugin {
   void init(std::shared_ptr<rclcpp::Node>) override {}
   std::vector<std::string> modify_args(const std::vector<std::string>& args) override;
   void add_options(CLI::App& app) override;
-  void on_start(rosbag2_cpp::Reader& reader,
-                const rclcpp::Logger* logger = nullptr) override;
+  void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) override;
   void on_stop() override {}
 
  private:
@@ -54,12 +53,10 @@ ArgVec TopicRemapPlugin::modify_args(const ArgVec& args) {
   return new_args;
 }
 
-void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader,
-                                const rclcpp::Logger* logger) {
+void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger) {
   std::vector<StringTransform> transforms;
   for (const auto& sub : remaps) {
-    transforms.push_back(
-        StringTransform::from_arg(StringTransform::Type::Substitute, sub, logger));
+    transforms.push_back(StringTransform::from_arg(StringTransform::Type::Substitute, sub, logger));
   }
 
   const auto all_topics = reader.get_all_topics_and_types();
@@ -76,8 +73,7 @@ void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader,
 
     bag_args.push_back(data.name + ":=" + topic);
     if (logger) {
-      RCLCPP_INFO_STREAM(*logger,
-                         "Remapping '" << data.name << "' -> '" << topic << "'");
+      RCLCPP_INFO_STREAM(*logger, "Remapping '" << data.name << "' -> '" << topic << "'");
     }
   }
 }

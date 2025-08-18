@@ -113,8 +113,8 @@ PluginVec load_plugins(pluginlib::ClassLoader<ianvs::RosbagPlayPlugin>& loader,
     try {
       plugins.push_back(loader.createSharedInstance(to_load));
     } catch (const pluginlib::PluginlibException& e) {
-      RCLCPP_ERROR_STREAM(
-          logger, "Unable to load registered plugin '" << to_load << "': " << e.what());
+      RCLCPP_ERROR_STREAM(logger,
+                          "Unable to load registered plugin '" << to_load << "': " << e.what());
     }
   }
 
@@ -188,9 +188,7 @@ int main(int argc, char** argv) {
   auto node = std::make_shared<BagWrapper>();
   executor.add_node(node);
 
-  pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader("ianvs",
-                                                         "ianvs::RosbagPlayPlugin");
-
+  pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader("ianvs", "ianvs::RosbagPlayPlugin");
   auto plugins = load_plugins(loader, node->get_logger());
   for (const auto& plugin : plugins) {
     plugin->init(node);
@@ -204,9 +202,7 @@ int main(int argc, char** argv) {
   // NOTE(nathan) for whatever reason, this doesn't get handled correctly when we use
   // the -- separator and multiple bags, so I give up
   std::filesystem::path bag;
-  app.add_option("bag_path", bag)
-      ->required()
-      ->description("primary bag to read static tfs from");
+  app.add_option("bag_path", bag)->required()->description("primary bag to read static tfs from");
 
   bool verbose = false;
   app.add_flag("-v,--verbose", verbose, "show transform results");

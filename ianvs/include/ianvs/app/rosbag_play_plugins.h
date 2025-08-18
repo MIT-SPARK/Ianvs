@@ -57,8 +57,7 @@ class RosbagPlayPlugin {
   }
 
   //! @brief Callback event to run before the bag starts
-  virtual void on_start(rosbag2_cpp::Reader& reader,
-                        const rclcpp::Logger* logger = nullptr) = 0;
+  virtual void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) = 0;
 
   //! @brief Callback event to run after the bag stops
   virtual void on_stop() = 0;

@@ -11,25 +11,19 @@ struct ImagePublisher::Impl {
 
   void publish(const sensor_msgs::msg::Image& msg) const { pub->publish(msg); }
 
-  void publish(sensor_msgs::msg::Image::UniquePtr&& msg) const {
-    pub->publish(std::move(msg));
-  }
+  void publish(sensor_msgs::msg::Image::UniquePtr&& msg) const { pub->publish(std::move(msg)); }
 
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub;
 };
 
 ImagePublisher::ImagePublisher() = default;
 
-ImagePublisher::ImagePublisher(NodeInterface node,
-                               const std::string& topic,
-                               const rclcpp::QoS& qos)
+ImagePublisher::ImagePublisher(NodeInterface node, const std::string& topic, const rclcpp::QoS& qos)
     : impl_(std::make_unique<Impl>(node, topic, qos)) {}
 
 ImagePublisher::~ImagePublisher() = default;
 
-ImagePublisher::ImagePublisher(ImagePublisher&& other) {
-  impl_ = std::move(other.impl_);
-}
+ImagePublisher::ImagePublisher(ImagePublisher&& other) { impl_ = std::move(other.impl_); }
 
 ImagePublisher& ImagePublisher::operator=(ImagePublisher&& other) {
   impl_ = std::move(other.impl_);

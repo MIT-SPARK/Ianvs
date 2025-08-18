@@ -38,8 +38,7 @@ void SignalStopPlugin::on_start(rosbag2_cpp::Reader&, const rclcpp::Logger* logg
 }
 
 void SignalStopPlugin::add_options(CLI::App& app) {
-  app.add_option("--signal-services", srvs_)
-      ->description("services to call when rosbag stops");
+  app.add_option("--signal-services", srvs_)->description("services to call when rosbag stops");
 }
 
 void SignalStopPlugin::on_stop() {
@@ -51,10 +50,9 @@ void SignalStopPlugin::on_stop() {
     auto req = std::make_shared<std_srvs::srv::Empty::Request>();
     const auto rep = ianvs::call_service(*client, req, 50);
     if (!rep) {
-      RCLCPP_ERROR_STREAM(node_->get_logger(),
-                          "Service call for client '"
-                              << std::string(client->get_service_name())
-                              << "' failed!");
+      RCLCPP_ERROR_STREAM(
+          node_->get_logger(),
+          "Service call for client '" << std::string(client->get_service_name()) << "' failed!");
     }
   }
 }
