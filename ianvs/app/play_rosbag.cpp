@@ -22,7 +22,6 @@ class BagWrapper : public rclcpp::Node {
   void start(const std::vector<std::string>& cmd_args) {
     running = true;
     child_ = std::make_unique<bp::child>(bp::search_path("ros2"), bp::args(cmd_args));
-
     auto timer_callback = [this]() -> void {
       if (child_ && !child_->running()) {
         running = false;
@@ -179,6 +178,11 @@ void cleanup(PluginVec& plugins, rclcpp::Executor& executor) {
   rclcpp::shutdown();
 }
 
+struct AppArgs {
+  bool verbose = false;
+  std::filesystem::path bag;
+};
+
 int main(int argc, char** argv) {
   const auto ros_argv = get_ros_args(argc, argv);
   rclcpp::init(ros_argv.size(), ros_argv.data());
@@ -195,18 +199,13 @@ int main(int argc, char** argv) {
   }
 
   CLI::App app("Utility to play a rosbag after modfying and publishing transforms");
-  // TODO(when 22.04 support ends): re-enable this once all systems use CLI11 >= 2.3.2
-  // argv = app.ensure_utf8(argv);
+  // argv = app.ensure_utf8(argv); // TODO(nathan): re-enable this after 22.04 EOL
   app.allow_extras();
 
-  // NOTE(nathan) for whatever reason, this doesn't get handled correctly when we use
-  // the -- separator and multiple bags, so I give up
-  std::filesystem::path bag;
-  app.add_option("bag_path", bag)->required()->description("primary bag to read static tfs from");
-
-  bool verbose = false;
-  app.add_flag("-v,--verbose", verbose, "show transform results");
-
+  // NOTE(nathan) multiple bags and -- separator don't work
+  AppArgs args;
+  app.add_option("bag", args.bag)->required()->description("primary bag to read static tfs from");
+  app.add_flag("-v,--verbose", args.verbose, "show transform results");
   for (const auto& plugin : plugins) {
     plugin->add_options(app);
   }
@@ -218,7 +217,7 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
-  const auto cmd_args = process_bag(bag, plugins, app.remaining());
+  const auto cmd_args = process_bag(args.bag, plugins, app.remaining());
   if (cmd_args.empty()) {
     cleanup(plugins, executor);
     return 1;
