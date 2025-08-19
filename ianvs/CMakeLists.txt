@@ -57,8 +57,9 @@ ament_target_dependencies(ament_shim INTERFACE tf2_msgs tf2_ros)
 # various plugins for executables to load
 add_library(
   ${PROJECT_NAME}_plugins SHARED
-  src/app/static_tf_plugin.cpp src/app/topic_remap_plugin.cpp
   src/app/signal_stop_plugin.cpp
+  src/app/tf_plugin.cpp
+  src/app/topic_remap_plugin.cpp
 )
 target_link_libraries(
   ${PROJECT_NAME}_plugins PUBLIC ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
