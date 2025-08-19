@@ -1,11 +1,10 @@
 #include <filesystem>
 
 #include <CLI/CLI.hpp>
-#include <boost/process.hpp>
-#include <boost/process/args.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
+#include <rosbag2_transport/player.hpp>
 #include <rosbag2_transport/reader_writer_factory.hpp>
 
 #include "ianvs/app/rosbag_play_plugins.h"
@@ -13,44 +12,52 @@
 using namespace std::chrono_literals;
 using PluginVec = std::vector<std::shared_ptr<ianvs::RosbagPlayPlugin>>;
 
-namespace bp = boost::process;
-
 class BagWrapper : public rclcpp::Node {
  public:
   BagWrapper() : Node("bag_wrapper"), running(false) {}
-
-  void start(const std::vector<std::string>& cmd_args) {
-    running = true;
-    child_ = std::make_unique<bp::child>(bp::search_path("ros2"), bp::args(cmd_args));
-    auto timer_callback = [this]() -> void {
-      if (child_ && !child_->running()) {
-        running = false;
-        timer_->cancel();
-      }
-    };
-
-    timer_ = this->create_wall_timer(10ms, timer_callback);
-  }
-
-  int stop() {
-    int exit_code = 0;
-    if (child_) {
-      child_->wait();
-      exit_code = child_->exit_code();
-    }
-
-    child_.reset();
-    return exit_code;
-  }
-
   ~BagWrapper() { stop(); }
+
+  void start(const std::filesystem::path& bag_path, const std::vector<std::string>& cmd_args);
+  bool stop();
 
   bool running;
 
  private:
-  std::unique_ptr<bp::child> child_;
+  std::unique_ptr<rosbag2_transport::Player> player_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
+
+void BagWrapper::start(const std::filesystem::path& bag_path,
+                       const std::vector<std::string>& cmd_args) {
+  using namespace std::chrono_literals;
+  running = true;
+
+  auto node_opts = rclcpp::NodeOptions().use_intra_process_comms(true);
+  rosbag2_storage::StorageOptions storage_opts;
+  storage_opts.uri = bag_path;
+  rosbag2_transport::PlayOptions play_opts;
+
+  player_.reset(
+      new rosbag2_transport::Player(storage_opts, play_opts, "rosbag2_player", node_opts));
+  player_->play();
+  auto timer_callback = [this]() -> void {
+    if (player_ && player_->wait_for_playback_to_finish(1ms)) {
+      running = false;
+      timer_->cancel();
+    }
+  };
+
+  timer_ = this->create_wall_timer(10ms, timer_callback);
+}
+
+bool BagWrapper::stop() {
+  if (player_) {
+    player_->stop();
+  }
+
+  player_.reset();
+  return true;
+}
 
 std::vector<char*> get_ros_args(int argc, char** argv) {
   // filters argc and argv to only have wrapper node args
@@ -223,12 +230,11 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  node->start(cmd_args);
+  node->start(args.bag, cmd_args);
   while (rclcpp::ok() && node->running) {
     executor.spin_once(1000ns);
   }
 
-  const auto ret = node->stop();
+  node->stop();
   cleanup(plugins, executor);
-  return ret;
 }
