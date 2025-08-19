@@ -186,9 +186,109 @@ void cleanup(PluginVec& plugins, rclcpp::Executor& executor) {
 }
 
 struct AppArgs {
-  bool verbose = false;
+  void add_to_app(CLI::App& app);
+
   std::filesystem::path bag;
+  const rosbag2_transport::PlayOptions& play_options() const { return play; }
+
+ private:
+  rosbag2_transport::PlayOptions play;
+
+  double play_delay_s = 0.0;
+  double play_duration_s = 0.0;
+  double play_start_offset_s = 0.0;
+
+  std::filesystem::path qos_overrides_path;
+  std::filesystem::path storage_config_path;
 };
+
+void AppArgs::add_to_app(CLI::App& app) {
+  using rosbag2_transport::ServiceRequestsSource;
+  const std::map<std::string, ServiceRequestsSource> mode_mapping{
+      {"service_introspection", ServiceRequestsSource::SERVICE_INTROSPECTION},
+      {"client_introspection", ServiceRequestsSource::CLIENT_INTROSPECTION},
+  };
+
+  app.add_option("bag_path", bag)->required()->description("Bag to open");
+
+  app.add_option("--read-ahead-queue-size", play.read_ahead_queue_size)
+      ->check(CLI::PositiveNumber)
+      ->description("Size of message queue rosbag uses");
+  app.add_option("-r,--rate", play.rate)
+      ->check(CLI::PositiveNumber)
+      ->description("Rate at which to play back messages");
+
+  app.add_option("--topics", play.topics_to_filter)
+      ->description("Space delimited list of topics to play");
+  app.add_option("--services", play.services_to_filter)
+      ->description("Space delimited list of services to play");
+  app.add_option("-e,--regex", play.regex_to_filter)
+      ->description("Play only topics and services matching regular expression");
+  app.add_option("-x,--exclude-regex", play.exclude_regex_to_filter)
+      ->description("Exclude topics and services matching regular expression");
+  app.add_option("--exclude-topics", play.exclude_topics_to_filter)
+      ->description("Space delimited list of topics not to play");
+  app.add_option("--exclude-services", play.exclude_services_to_filter)
+      ->description("Space delimited list of services not to play");
+
+  app.add_option("--qos-profile-overrides-path", qos_overrides_path)
+      ->check(CLI::ExistingFile)
+      ->description("Path to a yaml file defining QoS profile overrides");
+
+  app.add_flag("-l,--loop", play.loop, "Enables loop playback when playing a bagfile");
+
+  app.add_option("-m,--remap", play.topic_remapping_options)
+      ->description("List of topics to be remapped in the form 'old:=new'");
+
+  app.add_option("--storage-config-file", storage_config_path)
+      ->check(CLI::ExistingFile)
+      ->description("Path to a yaml file defining storage specific configurations");
+
+  const auto clock_opt = app.add_option("--clock", play.clock_publish_frequency)
+                             ->expected(0, 1)
+                             ->default_val(40.0)
+                             ->description("Publish to '/clock' to act as a ROS time source");
+  app.add_option("--clock-topics", play.clock_trigger_topics)
+      ->description("Space delimited topics that will trigger a '/clock' update");
+  app.add_flag("--clock-topics-all",
+               play.clock_publish_on_topic_publish,
+               "Publishes an update on '/clock' immediately before each replayed message");
+
+  app.add_option("-d,--delay", play_delay_s)
+      ->check(CLI::PositiveNumber)
+      ->description("Sleep duration before play in seconds");
+  app.add_option("--playback-duration", play_duration_s)
+      ->check(CLI::PositiveNumber)
+      ->description("Playback duration, in seconds");
+  app.add_option("--playback-until-nsec", play.playback_until_timestamp)
+      ->description("Playback until timestamp, expressed in nanoseconds since epoch");
+
+  app.add_flag("--disable-keyboard-controls", play.disable_keyboard_controls, "Disables controls");
+  app.add_flag("-p,--start-paused", play.start_paused, "Start in a paused state");
+  app.add_option("--start-offset", play_start_offset_s)
+      ->description("Start the playback player this many seconds into the bag file");
+
+  // TODO(nathan) this might be milliseconds on the CLI side
+  app.add_option("--wait-for-all-acked", play.wait_acked_timeout)
+      ->description("Timeout for subscription acknlowedgement");
+  app.add_flag("--disable-loan-message", play.disable_loan_message, "Disable loaned messages");
+  app.add_flag("--publish-service-requests",
+               play.publish_service_requests,
+               "Publish recorded service requests instead of recorded service events");
+  app.add_option("--service-requests-source", play.service_requests_source)
+      ->check(CLI::Transformer(mode_mapping))
+      ->description("Set the source of the service requests to be replayed");
+
+  app.final_callback([this, clock_opt]() {
+    if (!clock_opt->count()) {
+      play.clock_publish_frequency = 0.0;
+    }
+
+    play.delay = rclcpp::Duration::from_seconds(play_delay_s);
+    play.playback_duration = rclcpp::Duration::from_seconds(play_duration_s);
+    play.start_offset = rclcpp::Duration::from_seconds(play_start_offset_s).nanoseconds();
+  });
+}
 
 int main(int argc, char** argv) {
   const auto ros_argv = get_ros_args(argc, argv);
@@ -208,13 +308,14 @@ int main(int argc, char** argv) {
   CLI::App app("Utility to play a rosbag after modfying and publishing transforms");
   // argv = app.ensure_utf8(argv); // TODO(nathan): re-enable this after 22.04 EOL
   app.allow_extras();
+  app.get_formatter()->column_width(50);
 
-  // NOTE(nathan) multiple bags and -- separator don't work
   AppArgs args;
-  app.add_option("bag", args.bag)->required()->description("primary bag to read static tfs from");
-  app.add_flag("-v,--verbose", args.verbose, "show transform results");
+  args.add_to_app(app);
+
+  auto plugin_app = app.add_option_group("Plugins", "Command line arguments for player plugins");
   for (const auto& plugin : plugins) {
-    plugin->add_options(app);
+    plugin->add_options(*plugin_app);
   }
 
   try {
@@ -224,7 +325,13 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
-  const auto cmd_args = process_bag(args.bag, plugins, app.remaining());
+  const auto play_options = args.play_options();
+  YAML::Node play_node;
+  play_node["play_options"] = play_options;
+  std::cerr << play_node << std::endl;
+
+  std::vector<std::string> cmd_args;
+  // const auto cmd_args = process_bag(args.bag, plugins, app.remaining());
   if (cmd_args.empty()) {
     cleanup(plugins, executor);
     return 1;
