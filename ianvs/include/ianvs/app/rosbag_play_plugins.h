@@ -40,6 +40,7 @@
 #include <rclcpp/logger.hpp>
 #include <rclcpp/node.hpp>
 #include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_transport/play_options.hpp>
 
 namespace ianvs {
 
@@ -51,10 +52,8 @@ class RosbagPlayPlugin {
   //! @brief Add CLI options to executable
   virtual void add_options(CLI::App& /* app */) {}
 
-  //! @brief Return ros2 bag play args with extra arguments injected
-  virtual std::vector<std::string> modify_args(const std::vector<std::string>& args) {
-    return args;
-  }
+  //! @brief Change playback options depending on plugin requiements
+  virtual void modify_playback(rosbag2_transport::PlayOptions& /* options */) {}
 
   //! @brief Callback event to run before the bag starts
   virtual void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) = 0;

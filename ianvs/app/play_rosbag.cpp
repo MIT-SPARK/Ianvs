@@ -12,53 +12,6 @@
 using namespace std::chrono_literals;
 using PluginVec = std::vector<std::shared_ptr<ianvs::RosbagPlayPlugin>>;
 
-class BagWrapper : public rclcpp::Node {
- public:
-  BagWrapper() : Node("bag_wrapper"), running(false) {}
-  ~BagWrapper() { stop(); }
-
-  void start(const std::filesystem::path& bag_path, const std::vector<std::string>& cmd_args);
-  bool stop();
-
-  bool running;
-
- private:
-  std::unique_ptr<rosbag2_transport::Player> player_;
-  rclcpp::TimerBase::SharedPtr timer_;
-};
-
-void BagWrapper::start(const std::filesystem::path& bag_path,
-                       const std::vector<std::string>& cmd_args) {
-  using namespace std::chrono_literals;
-  running = true;
-
-  auto node_opts = rclcpp::NodeOptions().use_intra_process_comms(true);
-  rosbag2_storage::StorageOptions storage_opts;
-  storage_opts.uri = bag_path;
-  rosbag2_transport::PlayOptions play_opts;
-
-  player_.reset(
-      new rosbag2_transport::Player(storage_opts, play_opts, "rosbag2_player", node_opts));
-  player_->play();
-  auto timer_callback = [this]() -> void {
-    if (player_ && player_->wait_for_playback_to_finish(1ms)) {
-      running = false;
-      timer_->cancel();
-    }
-  };
-
-  timer_ = this->create_wall_timer(10ms, timer_callback);
-}
-
-bool BagWrapper::stop() {
-  if (player_) {
-    player_->stop();
-  }
-
-  player_.reset();
-  return true;
-}
-
 std::vector<char*> get_ros_args(int argc, char** argv) {
   // filters argc and argv to only have wrapper node args
   std::vector<char*> ros_argv;
@@ -77,24 +30,6 @@ std::vector<char*> get_ros_args(int argc, char** argv) {
   }
 
   return ros_argv;
-}
-
-std::vector<std::string> get_bag_args(const std::string& bag_path,
-                                      const std::vector<std::string>& remaining) {
-  std::vector<std::string> cmd_args{"bag", "play", bag_path};
-  for (const auto& arg : remaining) {
-    if (arg == "--") {
-      continue;
-    }
-
-    if (arg == "--ros-args") {
-      break;
-    }
-
-    cmd_args.push_back(arg);
-  }
-
-  return cmd_args;
 }
 
 PluginVec load_plugins(pluginlib::ClassLoader<ianvs::RosbagPlayPlugin>& loader,
@@ -127,44 +62,101 @@ PluginVec load_plugins(pluginlib::ClassLoader<ianvs::RosbagPlayPlugin>& loader,
   return plugins;
 }
 
-std::vector<std::string> process_bag(const std::filesystem::path& bag_path,
-                                     const PluginVec& plugins,
-                                     const std::vector<std::string>& remaining) {
+class BagWrapper : public rclcpp::Node {
+ public:
+  BagWrapper();
+  ~BagWrapper();
+
+  void add_options(CLI::App& app);
+  bool start(const std::filesystem::path& bag_path,
+             const rosbag2_transport::PlayOptions& play_opts);
+  bool stop();
+  void cleanup(rclcpp::Executor& executor);
+
+  bool running;
+
+ private:
+  bool preprocess_bag(const rosbag2_storage::StorageOptions& opts);
+
+  PluginVec plugins_;
+  pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader_;
+  std::unique_ptr<rosbag2_transport::Player> player_;
+  rclcpp::TimerBase::SharedPtr timer_;
+};
+
+void BagWrapper::add_options(CLI::App& app) {
+  for (const auto& plugin : plugins_) {
+    plugin->init(shared_from_this());
+  }
+
+  for (const auto& plugin : plugins_) {
+    plugin->add_options(app);
+  }
+}
+
+BagWrapper::BagWrapper()
+    : Node("bag_wrapper"), running(false), loader_("ianvs", "ianvs::RosbagPlayPlugin") {
+  plugins_ = load_plugins(loader_, get_logger());
+}
+
+BagWrapper::~BagWrapper() {
+  stop();
+  plugins_.clear();
+}
+
+bool BagWrapper::start(const std::filesystem::path& bag_path,
+                       const rosbag2_transport::PlayOptions& play_opts) {
+  using namespace std::chrono_literals;
   if (!std::filesystem::exists(bag_path)) {
-    return {};
+    return false;
   }
 
-  rosbag2_storage::StorageOptions opts;
-  opts.uri = bag_path;
-  auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(opts);
-  if (!reader) {
-    return {};
+  rosbag2_storage::StorageOptions storage_opts;
+  storage_opts.uri = bag_path;
+  if (!preprocess_bag(storage_opts)) {
+    return false;
   }
 
-  reader->open(opts);
-  for (const auto& plugin : plugins) {
-    plugin->on_start(*reader);
+  rosbag2_transport::PlayOptions play_options = play_opts;
+  for (const auto& plugin : plugins_) {
+    plugin->modify_playback(play_options);
   }
 
-  auto cmd_args = get_bag_args(bag_path, remaining);
-  for (const auto& plugin : plugins) {
-    cmd_args = plugin->modify_args(cmd_args);
-  }
+  running = true;
 
-  return cmd_args;
+  YAML::Node play_node;
+  play_node["play_options"] = play_options;
+  std::cerr << play_node << std::endl;
+
+  auto node_opts = rclcpp::NodeOptions().use_intra_process_comms(true);
+  player_.reset(
+      new rosbag2_transport::Player(storage_opts, play_opts, "rosbag2_player", node_opts));
+  player_->play();
+  auto timer_callback = [this]() -> void {
+    if (player_ && player_->wait_for_playback_to_finish(1ms)) {
+      running = false;
+      timer_->cancel();
+    }
+  };
+
+  timer_ = this->create_wall_timer(10ms, timer_callback);
+  return true;
 }
 
-void stop_plugins(const PluginVec& plugins) {
-  for (const auto& plugin : plugins) {
-    plugin->on_stop();
+bool BagWrapper::stop() {
+  if (player_) {
+    player_->stop();
   }
+
+  player_.reset();
+  return true;
 }
 
-void cleanup(PluginVec& plugins, rclcpp::Executor& executor) {
+void BagWrapper::cleanup(rclcpp::Executor& executor) {
   if (rclcpp::ok()) {
     std::atomic<bool> finished = false;
     std::thread stop_thread([&]() {
-      for (const auto& plugin : plugins) {
+      for (const auto& plugin : plugins_) {
         plugin->on_stop();
       }
       finished = true;
@@ -176,13 +168,27 @@ void cleanup(PluginVec& plugins, rclcpp::Executor& executor) {
 
     stop_thread.join();
   } else {
-    for (const auto& plugin : plugins) {
+    for (const auto& plugin : plugins_) {
       plugin->on_stop();
     }
   }
 
-  plugins.clear();
-  rclcpp::shutdown();
+  plugins_.clear();
+}
+
+bool BagWrapper::preprocess_bag(const rosbag2_storage::StorageOptions& opts) {
+  auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(opts);
+  if (!reader) {
+    return false;
+  }
+
+  const auto logger = get_logger();
+  reader->open(opts);
+  for (const auto& plugin : plugins_) {
+    plugin->on_start(*reader, &logger);
+  }
+
+  return true;
 }
 
 struct AppArgs {
@@ -195,7 +201,7 @@ struct AppArgs {
   rosbag2_transport::PlayOptions play;
 
   double play_delay_s = 0.0;
-  double play_duration_s = 0.0;
+  double play_duration_s = -1.0;
   double play_start_offset_s = 0.0;
 
   std::filesystem::path qos_overrides_path;
@@ -258,7 +264,6 @@ void AppArgs::add_to_app(CLI::App& app) {
       ->check(CLI::PositiveNumber)
       ->description("Sleep duration before play in seconds");
   app.add_option("--playback-duration", play_duration_s)
-      ->check(CLI::PositiveNumber)
       ->description("Playback duration, in seconds");
   app.add_option("--playback-until-nsec", play.playback_until_timestamp)
       ->description("Playback until timestamp, expressed in nanoseconds since epoch");
@@ -299,12 +304,6 @@ int main(int argc, char** argv) {
   auto node = std::make_shared<BagWrapper>();
   executor.add_node(node);
 
-  pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader("ianvs", "ianvs::RosbagPlayPlugin");
-  auto plugins = load_plugins(loader, node->get_logger());
-  for (const auto& plugin : plugins) {
-    plugin->init(node);
-  }
-
   CLI::App app("Utility to play a rosbag after modfying and publishing transforms");
   // argv = app.ensure_utf8(argv); // TODO(nathan): re-enable this after 22.04 EOL
   app.allow_extras();
@@ -314,34 +313,27 @@ int main(int argc, char** argv) {
   args.add_to_app(app);
 
   auto plugin_app = app.add_option_group("Plugins", "Command line arguments for player plugins");
-  for (const auto& plugin : plugins) {
-    plugin->add_options(*plugin_app);
-  }
+  node->add_options(*plugin_app);
 
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError& e) {
-    cleanup(plugins, executor);
+    node->cleanup(executor);
+    rclcpp::shutdown();
     return app.exit(e);
   }
 
-  const auto play_options = args.play_options();
-  YAML::Node play_node;
-  play_node["play_options"] = play_options;
-  std::cerr << play_node << std::endl;
-
-  std::vector<std::string> cmd_args;
-  // const auto cmd_args = process_bag(args.bag, plugins, app.remaining());
-  if (cmd_args.empty()) {
-    cleanup(plugins, executor);
+  if (!node->start(args.bag, args.play_options())) {
+    node->cleanup(executor);
+    rclcpp::shutdown();
     return 1;
   }
 
-  node->start(args.bag, cmd_args);
   while (rclcpp::ok() && node->running) {
     executor.spin_once(1000ns);
   }
 
   node->stop();
-  cleanup(plugins, executor);
+  node->cleanup(executor);
+  rclcpp::shutdown();
 }

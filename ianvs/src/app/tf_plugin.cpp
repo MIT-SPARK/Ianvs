@@ -50,7 +50,7 @@ class TFPlugin : public RosbagPlayPlugin {
 
   void init(std::shared_ptr<rclcpp::Node> node) override;
   void add_options(CLI::App& app) override;
-  std::vector<std::string> modify_args(const std::vector<std::string>& args) override;
+  void modify_playback(rosbag2_transport::PlayOptions& options) override;
   void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) override;
   void on_stop() override {}
 
@@ -134,12 +134,12 @@ std::vector<StringTransform> TFPlugin::Config::transforms(const rclcpp::Logger* 
 TFPlugin::TFPlugin() {}
 
 void TFPlugin::init(std::shared_ptr<rclcpp::Node> node) {
-  broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node);
-  dynamic_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node);
-  sub_ = node->create_subscription<TFMessage>(
-      "/tf",
-      tf2_ros::DynamicListenerQoS(),
-      std::bind(&TFPlugin::callback, this, std::placeholders::_1));
+  //broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node);
+  //dynamic_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node);
+/*  sub_ = node->create_subscription<TFMessage>(*/
+      /*"/tf",*/
+      /*tf2_ros::DynamicListenerQoS(),*/
+      /*std::bind(&TFPlugin::callback, this, std::placeholders::_1));*/
 }
 
 void TFPlugin::add_options(CLI::App& app) {
@@ -154,23 +154,8 @@ void TFPlugin::add_options(CLI::App& app) {
   app.add_option("--filter-dynamic", config.filter_dynamic)->description("enable republishing tf");
 }
 
-ArgVec TFPlugin::modify_args(const ArgVec& args) {
-  bool added_exclude = false;
-  std::vector<std::string> new_args;
-  for (const auto& arg : args) {
-    new_args.push_back(arg);
-    if (arg == "--exclude-topics") {
-      new_args.push_back("/tf_static");
-      added_exclude = true;
-    }
-  }
-
-  if (!added_exclude) {
-    new_args.push_back("--exclude-topics");
-    new_args.push_back("/tf_static");
-  }
-
-  return new_args;
+void TFPlugin::modify_playback(rosbag2_transport::PlayOptions& options) {
+  options.exclude_topics_to_filter.push_back("/tf_static");
 }
 
 void TFPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger) {
