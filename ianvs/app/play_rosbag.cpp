@@ -292,6 +292,8 @@ void AppArgs::add_to_app(CLI::App& app) {
 
     if (!clock_opt->count()) {
       play.clock_publish_frequency = 0.0;
+    } else {
+      play.exclude_topics_to_filter.push_back("/clock");
     }
 
     play.delay = rclcpp::Duration::from_seconds(play_delay_s);
