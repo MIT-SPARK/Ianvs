@@ -68,7 +68,9 @@ class BagWrapper : public rclcpp::Node {
   ~BagWrapper();
 
   void add_options(CLI::App& app);
-  bool start(const std::filesystem::path& bag_path, rosbag2_transport::PlayOptions play_opts);
+  bool start(const std::filesystem::path& bag_path,
+             rosbag2_transport::PlayOptions play_opts,
+             rclcpp::Executor& executor);
   bool stop();
   void cleanup(rclcpp::Executor& executor);
 
@@ -79,7 +81,7 @@ class BagWrapper : public rclcpp::Node {
 
   PluginVec plugins_;
   pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader_;
-  std::unique_ptr<rosbag2_transport::Player> player_;
+  std::shared_ptr<rosbag2_transport::Player> player_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
@@ -104,7 +106,8 @@ BagWrapper::~BagWrapper() {
 }
 
 bool BagWrapper::start(const std::filesystem::path& bag_path,
-                       rosbag2_transport::PlayOptions play_options) {
+                       rosbag2_transport::PlayOptions play_options,
+                       rclcpp::Executor& executor) {
   using namespace std::chrono_literals;
   if (!std::filesystem::exists(bag_path)) {
     return false;
@@ -130,6 +133,7 @@ bool BagWrapper::start(const std::filesystem::path& bag_path,
   player_.reset(
       new rosbag2_transport::Player(storage_opts, play_options, "rosbag2_player", node_opts));
   player_->play();
+  executor.add_node(player_);
   auto timer_callback = [this]() -> void {
     if (player_ && player_->wait_for_playback_to_finish(1ms)) {
       running = false;
@@ -330,7 +334,7 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
-  if (!node->start(args.bag, args.play_options())) {
+  if (!node->start(args.bag, args.play_options(), executor)) {
     node->cleanup(executor);
     rclcpp::shutdown();
     return 1;
