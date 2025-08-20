@@ -60,6 +60,7 @@ class TFPlugin : public RosbagPlayPlugin {
   void callback(TFMessage::UniquePtr msg);
   void publishStaticTFs(const PoseMap& pose_map);
 
+  std::string tf_topic_;
   std::unique_ptr<FrameRemapper> remapper_;
   rclcpp::Subscription<TFMessage>::SharedPtr sub_;
   std::unique_ptr<tf2_ros::StaticTransformBroadcaster> broadcaster_;
@@ -134,12 +135,13 @@ std::vector<StringTransform> TFPlugin::Config::transforms(const rclcpp::Logger* 
 TFPlugin::TFPlugin() {}
 
 void TFPlugin::init(std::shared_ptr<rclcpp::Node> node) {
-  //broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node);
-  //dynamic_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node);
-/*  sub_ = node->create_subscription<TFMessage>(*/
-      /*"/tf",*/
-      /*tf2_ros::DynamicListenerQoS(),*/
-      /*std::bind(&TFPlugin::callback, this, std::placeholders::_1));*/
+  tf_topic_ = node->get_node_topics_interface()->resolve_topic_name("~/_tf");
+  broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node);
+  dynamic_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node);
+  sub_ = node->create_subscription<TFMessage>(
+      tf_topic_,
+      tf2_ros::DynamicListenerQoS(),
+      std::bind(&TFPlugin::callback, this, std::placeholders::_1));
 }
 
 void TFPlugin::add_options(CLI::App& app) {
@@ -151,11 +153,15 @@ void TFPlugin::add_options(CLI::App& app) {
       ->description("optional regex filter to drop frames (applied before prefix)");
   app.add_option("-s,--substitution", config.substitutions)
       ->description("apply substitution (match and substituion are separated by :)");
-  app.add_option("--filter-dynamic", config.filter_dynamic)->description("enable republishing tf");
+  app.add_flag("--filter-dynamic", config.filter_dynamic, "enable filtering /tf");
 }
 
 void TFPlugin::modify_playback(rosbag2_transport::PlayOptions& options) {
   options.exclude_topics_to_filter.push_back("/tf_static");
+  if (config.filter_dynamic) {
+    options.topic_remapping_options.push_back("--remap");
+    options.topic_remapping_options.push_back("/tf:=" + tf_topic_);
+  }
 }
 
 void TFPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger) {

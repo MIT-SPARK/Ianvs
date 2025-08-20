@@ -68,8 +68,7 @@ class BagWrapper : public rclcpp::Node {
   ~BagWrapper();
 
   void add_options(CLI::App& app);
-  bool start(const std::filesystem::path& bag_path,
-             const rosbag2_transport::PlayOptions& play_opts);
+  bool start(const std::filesystem::path& bag_path, rosbag2_transport::PlayOptions play_opts);
   bool stop();
   void cleanup(rclcpp::Executor& executor);
 
@@ -105,7 +104,7 @@ BagWrapper::~BagWrapper() {
 }
 
 bool BagWrapper::start(const std::filesystem::path& bag_path,
-                       const rosbag2_transport::PlayOptions& play_opts) {
+                       rosbag2_transport::PlayOptions play_options) {
   using namespace std::chrono_literals;
   if (!std::filesystem::exists(bag_path)) {
     return false;
@@ -117,7 +116,6 @@ bool BagWrapper::start(const std::filesystem::path& bag_path,
     return false;
   }
 
-  rosbag2_transport::PlayOptions play_options = play_opts;
   for (const auto& plugin : plugins_) {
     plugin->modify_playback(play_options);
   }
@@ -126,11 +124,11 @@ bool BagWrapper::start(const std::filesystem::path& bag_path,
 
   YAML::Node play_node;
   play_node["play_options"] = play_options;
-  std::cerr << play_node << std::endl;
+  RCLCPP_DEBUG_STREAM(get_logger(), play_node);
 
   auto node_opts = rclcpp::NodeOptions().use_intra_process_comms(true);
   player_.reset(
-      new rosbag2_transport::Player(storage_opts, play_opts, "rosbag2_player", node_opts));
+      new rosbag2_transport::Player(storage_opts, play_options, "rosbag2_player", node_opts));
   player_->play();
   auto timer_callback = [this]() -> void {
     if (player_ && player_->wait_for_playback_to_finish(1ms)) {
@@ -199,6 +197,7 @@ struct AppArgs {
 
  private:
   rosbag2_transport::PlayOptions play;
+  std::vector<std::string> remaps;
 
   double play_delay_s = 0.0;
   double play_duration_s = -1.0;
@@ -243,7 +242,7 @@ void AppArgs::add_to_app(CLI::App& app) {
 
   app.add_flag("-l,--loop", play.loop, "Enables loop playback when playing a bagfile");
 
-  app.add_option("-m,--remap", play.topic_remapping_options)
+  app.add_option("-m,--remap", remaps)
       ->description("List of topics to be remapped in the form 'old:=new'");
 
   app.add_option("--storage-config-file", storage_config_path)
@@ -285,6 +284,12 @@ void AppArgs::add_to_app(CLI::App& app) {
       ->description("Set the source of the service requests to be replayed");
 
   app.final_callback([this, clock_opt]() {
+    play.topic_remapping_options.push_back("--ros-args");
+    for (const auto& mapping : remaps) {
+      play.topic_remapping_options.push_back("--remap");
+      play.topic_remapping_options.push_back(mapping);
+    }
+
     if (!clock_opt->count()) {
       play.clock_publish_frequency = 0.0;
     }
