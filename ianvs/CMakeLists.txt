@@ -12,14 +12,13 @@ endif()
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 
 find_package(ament_cmake REQUIRED)
-find_package(Boost REQUIRED COMPONENTS filesystem system)
 find_package(CLI11 REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rosbag2_transport REQUIRED)
-find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 
@@ -70,7 +69,6 @@ target_link_libraries(
 add_executable(play_rosbag app/play_rosbag.cpp)
 target_link_libraries(
   play_rosbag PRIVATE ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
-                      Boost::system Boost::filesystem
 )
 
 add_executable(merge_rosbags app/merge_rosbags.cpp)
