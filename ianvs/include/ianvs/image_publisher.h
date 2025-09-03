@@ -10,9 +10,9 @@ namespace ianvs {
 
 class ImagePublisher {
  public:
-  using NodeInterface = rclcpp::node_interfaces::NodeInterfaces<
-      rclcpp::node_interfaces::NodeParametersInterface,
-      rclcpp::node_interfaces::NodeTopicsInterface>;
+  using NodeInterface =
+      rclcpp::node_interfaces::NodeInterfaces<rclcpp::node_interfaces::NodeParametersInterface,
+                                              rclcpp::node_interfaces::NodeTopicsInterface>;
 
   ImagePublisher();
   ImagePublisher(NodeInterface node,

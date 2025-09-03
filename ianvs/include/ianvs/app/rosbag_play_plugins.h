@@ -33,82 +33,33 @@
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
 #pragma once
-#include <map>
-#include <string>
 
-#include "ianvs/node_handle.h"
+#include <memory>
+
+#include <CLI/CLI.hpp>
+#include <rclcpp/logger.hpp>
+#include <rclcpp/node.hpp>
+#include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_transport/play_options.hpp>
 
 namespace ianvs {
 
-template <typename Derived>
-struct publisher_type_trait;
-
-// NOTE(nathan) CRTP or something similar seems necessary here becuase the various
-// publisher types need something common (the Derived class) to hold construction
-// information
-template <typename Derived>
-class LazyPublisherGroup {
+class RosbagPlayPlugin {
  public:
-  virtual ~LazyPublisherGroup() = default;
+  //! @brief Initialize plugin
+  virtual void init(std::shared_ptr<rclcpp::Node> node) = 0;
 
-  template <typename Callback>
-  void publish(const std::string& topic, const Callback& callback) const {
-    const auto derived = static_cast<const Derived*>(this);
-    auto iter = pubs_.find(topic);
-    if (iter == pubs_.end()) {
-      iter = pubs_.emplace(topic, derived->make_publisher(topic)).first;
-    }
+  //! @brief Add CLI options to executable
+  virtual void add_options(CLI::App& /* app */) {}
 
-    if (!derived->should_publish(iter->second)) {
-      return;
-    }
+  //! @brief Change playback options depending on plugin requiements
+  virtual void modify_playback(rosbag2_transport::PlayOptions& /* options */) {}
 
-    derived->publish_msg(iter->second, callback());
-  }
+  //! @brief Callback event to run before the bag starts
+  virtual void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) = 0;
 
- private:
-  friend Derived;
-  LazyPublisherGroup() = default;
-
-  using PublisherT = typename publisher_type_trait<Derived>::value;
-  mutable std::map<std::string, PublisherT> pubs_;
-};
-
-template <typename T>
-struct RosPublisherGroup;
-
-template <typename T>
-struct publisher_type_trait<RosPublisherGroup<T>> {
-  using value = typename rclcpp::Publisher<T>::SharedPtr;
-};
-
-template <typename T>
-struct RosPublisherGroup : LazyPublisherGroup<RosPublisherGroup<T>> {
- public:
-  using Base = LazyPublisherGroup<RosPublisherGroup<T>>;
-  using Pub = typename rclcpp::Publisher<T>::SharedPtr;
-
-  explicit RosPublisherGroup(NodeHandle nh, const rclcpp::QoS& qos = rclcpp::QoS(1))
-      : nh_(nh), qos(qos) {}
-
-  Pub make_publisher(const std::string& topic) const { return nh_.create_publisher<T>(topic, qos); }
-
-  bool should_publish(const Pub& pub) const { return pub->get_subscription_count() > 0; }
-
-  void publish_msg(const Pub& pub, typename T::UniquePtr&& msg) const {
-    pub->publish(std::move(msg));
-  }
-
-  void publish_msg(const Pub& pub, const T& msg) const { pub->publish(msg); }
-
-  void publish_msg(const Pub& pub, const typename T::ConstSharedPtr& msg) const {
-    pub->publish(*msg);
-  }
-
-  const rclcpp::QoS qos;
-
- private:
-  mutable NodeHandle nh_;
+  //! @brief Callback event to run after the bag stops
+  virtual void on_stop() = 0;
 };
 
 }  // namespace ianvs

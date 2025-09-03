@@ -16,8 +16,7 @@ std::string join_namespace(const std::string& ns, const std::string& topic) {
   return ns + (ns.back() == '/' ? "" : "/") + topic;
 }
 
-NodeHandle::NodeHandle(NodeInterface node, const std::string& ns)
-    : node_(node), ns_(ns) {}
+NodeHandle::NodeHandle(NodeInterface node, const std::string& ns) : node_(node), ns_(ns) {}
 
 NodeHandle& NodeHandle::operator/=(const std::string& ns) {
   ns_ = join_namespace(ns_, ns);

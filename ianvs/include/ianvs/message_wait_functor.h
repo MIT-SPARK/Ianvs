@@ -27,8 +27,7 @@ struct MessageWaitFunctor {
         r.sleep();
       }
 
-      const std::chrono::duration<double> diff =
-          std::chrono::steady_clock::now() - start;
+      const std::chrono::duration<double> diff = std::chrono::steady_clock::now() - start;
       if (timeout > std::chrono::milliseconds::zero() && diff > timeout) {
         break;
       }
@@ -48,8 +47,8 @@ std::optional<MsgT> getSingleMessage(NodeHandle nh,
                                      const rclcpp::QoS& qos = rclcpp::QoS(1),
                                      size_t timeout_ms = 0) {
   MessageWaitFunctor<MsgT> functor;
-  [[maybe_unused]] const auto sub = nh.create_subscription<MsgT>(
-      topic, qos, &MessageWaitFunctor<MsgT>::callback, &functor);
+  [[maybe_unused]] const auto sub =
+      nh.create_subscription<MsgT>(topic, qos, &MessageWaitFunctor<MsgT>::callback, &functor);
   const auto msg = functor.wait(nh, spin_required, timeout_ms);
   if (!msg) {
     return std::nullopt;

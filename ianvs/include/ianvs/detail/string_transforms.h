@@ -33,82 +33,29 @@
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
 #pragma once
-#include <map>
+
+#include <regex>
 #include <string>
 
-#include "ianvs/node_handle.h"
+namespace rclcpp {
+class Logger;
+}
 
-namespace ianvs {
+namespace ianvs::detail {
 
-template <typename Derived>
-struct publisher_type_trait;
+struct StringTransform {
+  enum class Type { Substitute, Filter, Prefix };
 
-// NOTE(nathan) CRTP or something similar seems necessary here becuase the various
-// publisher types need something common (the Derived class) to hold construction
-// information
-template <typename Derived>
-class LazyPublisherGroup {
- public:
-  virtual ~LazyPublisherGroup() = default;
+  StringTransform(const std::string& expr, const std::string& sub);
 
-  template <typename Callback>
-  void publish(const std::string& topic, const Callback& callback) const {
-    const auto derived = static_cast<const Derived*>(this);
-    auto iter = pubs_.find(topic);
-    if (iter == pubs_.end()) {
-      iter = pubs_.emplace(topic, derived->make_publisher(topic)).first;
-    }
+  static StringTransform from_arg(Type type,
+                                  const std::string& arg,
+                                  const rclcpp::Logger* logger = nullptr);
 
-    if (!derived->should_publish(iter->second)) {
-      return;
-    }
+  std::string apply(const std::string& frame_id) const;
 
-    derived->publish_msg(iter->second, callback());
-  }
-
- private:
-  friend Derived;
-  LazyPublisherGroup() = default;
-
-  using PublisherT = typename publisher_type_trait<Derived>::value;
-  mutable std::map<std::string, PublisherT> pubs_;
+  const std::regex expr;
+  const std::string sub;
 };
 
-template <typename T>
-struct RosPublisherGroup;
-
-template <typename T>
-struct publisher_type_trait<RosPublisherGroup<T>> {
-  using value = typename rclcpp::Publisher<T>::SharedPtr;
-};
-
-template <typename T>
-struct RosPublisherGroup : LazyPublisherGroup<RosPublisherGroup<T>> {
- public:
-  using Base = LazyPublisherGroup<RosPublisherGroup<T>>;
-  using Pub = typename rclcpp::Publisher<T>::SharedPtr;
-
-  explicit RosPublisherGroup(NodeHandle nh, const rclcpp::QoS& qos = rclcpp::QoS(1))
-      : nh_(nh), qos(qos) {}
-
-  Pub make_publisher(const std::string& topic) const { return nh_.create_publisher<T>(topic, qos); }
-
-  bool should_publish(const Pub& pub) const { return pub->get_subscription_count() > 0; }
-
-  void publish_msg(const Pub& pub, typename T::UniquePtr&& msg) const {
-    pub->publish(std::move(msg));
-  }
-
-  void publish_msg(const Pub& pub, const T& msg) const { pub->publish(msg); }
-
-  void publish_msg(const Pub& pub, const typename T::ConstSharedPtr& msg) const {
-    pub->publish(*msg);
-  }
-
-  const rclcpp::QoS qos;
-
- private:
-  mutable NodeHandle nh_;
-};
-
-}  // namespace ianvs
+}  // namespace ianvs::detail

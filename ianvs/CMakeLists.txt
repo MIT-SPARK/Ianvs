@@ -12,21 +12,23 @@ endif()
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 
 find_package(ament_cmake REQUIRED)
-find_package(Boost REQUIRED COMPONENTS filesystem system)
 find_package(CLI11 REQUIRED)
 find_package(message_filters REQUIRED)
+find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rosbag2_transport REQUIRED)
-find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 
 find_package(Python COMPONENTS Interpreter Development)
 find_package(pybind11 CONFIG REQUIRED)
 
+# core library for use downstream
 add_library(
   ${PROJECT_NAME}
+  src/detail/string_transforms.cpp
   src/image_publisher.cpp
   src/image_subscription.cpp
   src/node_handle.cpp
@@ -36,7 +38,7 @@ add_library(
 )
 add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_link_libraries(
-  ${PROJECT_NAME} PUBLIC message_filters::message_filters rclcpp::rclcpp
+  ${PROJECT_NAME} PUBLIC CLI11::CLI11 message_filters::message_filters rclcpp::rclcpp
 )
 target_include_directories(
   ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -48,12 +50,31 @@ if(NOT BUILD_SHARED_LIBS)
   set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
 
+add_library(ament_shim INTERFACE)
+ament_target_dependencies(ament_shim INTERFACE tf2_msgs tf2_ros)
+
+# various plugins for executables to load
+add_library(
+  ${PROJECT_NAME}_plugins SHARED
+  src/app/signal_stop_plugin.cpp
+  src/app/tf_plugin.cpp
+  src/app/topic_remap_plugin.cpp
+)
+target_link_libraries(
+  ${PROJECT_NAME}_plugins PUBLIC ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
+  PRIVATE ament_shim
+)
+
+# executables
 add_executable(play_rosbag app/play_rosbag.cpp)
 target_link_libraries(
-  play_rosbag PRIVATE rclcpp::rclcpp rosbag2_transport::rosbag2_transport Boost::system
-                      Boost::filesystem CLI11::CLI11
+  play_rosbag PRIVATE ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
 )
-ament_target_dependencies(play_rosbag PUBLIC tf2_msgs tf2_ros)
+
+add_executable(merge_rosbags app/merge_rosbags.cpp)
+target_link_libraries(
+  merge_rosbags PRIVATE ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
+)
 
 pybind11_add_module(
   _${PROJECT_NAME}_bindings src/bindings/image_encodings.cpp src/bindings/module.cpp
@@ -67,7 +88,7 @@ ament_target_dependencies(_${PROJECT_NAME}_bindings PUBLIC sensor_msgs)
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
-  TARGETS ${PROJECT_NAME} play_rosbag
+  TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_plugins play_rosbag merge_rosbags
   EXPORT ${PROJECT_NAME}-exports
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -81,6 +102,7 @@ install(TARGETS _${PROJECT_NAME}_bindings
 )
 ament_python_install_package(${PROJECT_NAME})
 
+pluginlib_export_plugin_description_file(ianvs plugins.xml)
 ament_export_targets(${PROJECT_NAME}-exports HAS_LIBRARY_TARGET)
-ament_export_dependencies(message_filters rclcpp sensor_msgs std_srvs)
+ament_export_dependencies(message_filters rclcpp sensor_msgs std_srvs CLI11)
 ament_package()

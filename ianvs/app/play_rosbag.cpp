@@ -1,358 +1,18 @@
-#include <tf2_ros/static_transform_broadcaster.h>
-
 #include <filesystem>
-#include <regex>
 
 #include <CLI/CLI.hpp>
-#include <boost/process.hpp>
-#include <boost/process/args.hpp>
+#include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
+#include <rosbag2_transport/player.hpp>
 #include <rosbag2_transport/reader_writer_factory.hpp>
-#include <tf2_msgs/msg/tf_message.hpp>
 
-using Transform = geometry_msgs::msg::TransformStamped;
-using tf2_msgs::msg::TFMessage;
+#include "ianvs/app/rosbag_play_plugins.h"
+
 using namespace std::chrono_literals;
+using PluginVec = std::vector<std::shared_ptr<ianvs::RosbagPlayPlugin>>;
 
-namespace bp = boost::process;
-
-struct StringTransform {
-  enum class Type { Substitute, Filter, Prefix };
-
-  StringTransform(const std::string& expr, const std::string& sub)
-      : expr(std::regex(expr)), sub(sub) {}
-
-  static StringTransform from_arg(Type type,
-                                  const std::string& arg,
-                                  const rclcpp::Logger& logger) {
-    switch (type) {
-      case Type::Substitute: {
-        const auto pos = arg.find(":");
-        if (pos == std::string::npos) {
-          RCLCPP_WARN_STREAM(logger, "Invalid substitution: '" << arg << "'");
-          return StringTransform("", "");
-        }
-
-        const auto expr = arg.substr(0, pos);
-        const auto sub = arg.substr(pos + 1);
-        return StringTransform(expr, sub);
-      }
-      case Type::Filter:
-        return StringTransform(arg, "");
-      case Type::Prefix:
-        return StringTransform("^.+", arg + "$&");
-      default:
-        return StringTransform("", "");
-    }
-  }
-
-  std::string apply(const std::string& frame_id) const {
-    std::regex re(expr);
-    return std::regex_replace(frame_id, re, sub);
-  }
-
-  const std::regex expr;
-  const std::string sub;
-};
-
-struct FrameTransforms {
-  struct Config {
-    std::string prefix;
-    std::string filter;
-    std::vector<std::string> substitutions;
-  };
-
-  explicit FrameTransforms(const std::vector<StringTransform>& transforms)
-      : transforms(transforms) {}
-
-  static FrameTransforms fromConfig(const Config& config,
-                                    const rclcpp::Logger& logger) {
-    std::vector<StringTransform> transforms;
-    if (!config.filter.empty()) {
-      transforms.push_back(StringTransform::from_arg(
-          StringTransform::Type::Filter, config.filter, logger));
-    }
-
-    if (!config.prefix.empty()) {
-      transforms.push_back(StringTransform::from_arg(
-          StringTransform::Type::Prefix, config.prefix, logger));
-    }
-
-    for (const auto& arg : config.substitutions) {
-      transforms.push_back(
-          StringTransform::from_arg(StringTransform::Type::Substitute, arg, logger));
-    }
-
-    return FrameTransforms(transforms);
-  }
-
-  std::string apply(const std::string& frame_id) const {
-    std::string result = frame_id;
-    for (const auto& transform : transforms) {
-      result = transform.apply(result);
-      if (result.empty()) {
-        return "";
-      }
-    }
-
-    return result;
-  }
-
-  std::vector<StringTransform> transforms;
-};
-
-std::string frame_name(const std::string& dest, const std::string& src) {
-  return "'" + dest + "_T_" + src + "'";
-}
-
-std::vector<Transform> read_static_tfs(const std::filesystem::path& bag_path,
-                                       const FrameTransforms& id_transforms,
-                                       const rclcpp::Logger* logger = nullptr) {
-  if (!std::filesystem::exists(bag_path)) {
-    return {};
-  }
-
-  rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
-  rosbag2_storage::StorageOptions storage_options;
-  storage_options.uri = bag_path;
-
-  const rclcpp::Serialization<TFMessage> serialization;
-  auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(storage_options);
-  if (!reader) {
-    return {};
-  }
-
-  std::map<std::string, std::map<std::string, Transform>> pose_map;
-  reader->open(storage_options);
-
-  rosbag2_storage::StorageFilter filter;
-  filter.topics = {"/tf_static"};
-  reader->set_filter(filter);
-  while (reader->has_next()) {
-    const auto msg = reader->read_next();
-    rclcpp::SerializedMessage serialized_msg(*msg->serialized_data);
-    auto tf_msg = std::make_shared<TFMessage>();
-    serialization.deserialize_message(&serialized_msg, tf_msg.get());
-    for (auto& tf : tf_msg->transforms) {
-      const auto parent_id = id_transforms.apply(tf.header.frame_id);
-      const auto child_id = id_transforms.apply(tf.child_frame_id);
-      if (parent_id.empty() || child_id.empty()) {
-        if (logger) {
-          const auto orig_name = frame_name(tf.header.frame_id, tf.child_frame_id);
-          RCLCPP_INFO_STREAM(*logger, "Dropping filtered transform " << orig_name);
-        }
-
-        continue;
-      }
-
-      tf.header.frame_id = parent_id;
-      tf.child_frame_id = child_id;
-
-      auto parent = pose_map.find(parent_id);
-      if (parent == pose_map.end()) {
-        parent = pose_map.emplace(parent_id, std::map<std::string, Transform>()).first;
-      }
-
-      auto& children = parent->second;
-      auto child = children.find(child_id);
-      if (child == children.end()) {
-        children.emplace(child_id, tf);
-        continue;
-      }
-
-      if (logger) {
-        const auto remapped_name = frame_name(parent_id, child_id);
-        RCLCPP_INFO_STREAM(*logger, "Dropping repeated tf " << remapped_name);
-      }
-    }
-  }
-
-  std::vector<Transform> poses;
-  for (const auto& [parent, children] : pose_map) {
-    for (const auto& [child, pose] : children) {
-      poses.push_back(pose);
-    }
-  }
-
-  return poses;
-}
-
-std::vector<std::string> get_remaps(const std::filesystem::path& bag_path,
-                                    const std::vector<StringTransform>& transforms,
-                                    const rclcpp::Logger* logger = nullptr) {
-  if (!std::filesystem::exists(bag_path)) {
-    return {};
-  }
-
-  rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
-  rosbag2_storage::StorageOptions storage_options;
-  storage_options.uri = bag_path;
-
-  const rclcpp::Serialization<TFMessage> serialization;
-  auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(storage_options);
-  if (!reader) {
-    return {};
-  }
-
-  reader->open(storage_options);
-  const auto all_topics = reader->get_all_topics_and_types();
-
-  std::vector<std::string> remaps;
-  for (const auto& topic_data : all_topics) {
-    auto new_topic = topic_data.name;
-    for (const auto& transform : transforms) {
-      new_topic = transform.apply(new_topic);
-    }
-
-    if (new_topic == topic_data.name) {
-      continue;
-    }
-
-    remaps.push_back(topic_data.name + ":=" + new_topic);
-    if (logger) {
-      RCLCPP_INFO_STREAM(
-          *logger, "Remapping '" << topic_data.name << "' -> '" << new_topic << "'");
-    }
-  }
-
-  return remaps;
-}
-
-std::vector<std::string> get_bag_args(const std::string& bag_path,
-                                      const std::vector<std::string>& remaining,
-                                      const std::vector<std::string>& remaps) {
-  std::vector<std::string> cmd_args{"bag", "play", bag_path};
-  bool added_exclude = false;
-  bool added_remap = false;
-  for (const auto& arg : remaining) {
-    if (arg == "--") {
-      continue;
-    }
-
-    if (arg == "--ros-args") {
-      break;
-    }
-
-    cmd_args.push_back(arg);
-    if (arg == "--exclude-topics") {
-      cmd_args.push_back("/tf_static");
-      added_exclude = true;
-    }
-
-    if (arg == "--remap") {
-      cmd_args.insert(cmd_args.end(), remaps.begin(), remaps.end());
-      added_remap = true;
-    }
-  }
-
-  if (!added_exclude) {
-    cmd_args.push_back("--exclude-topics");
-    cmd_args.push_back("/tf_static");
-  }
-
-  if (!added_remap && !remaps.empty()) {
-    cmd_args.push_back("--remap");
-    cmd_args.insert(cmd_args.end(), remaps.begin(), remaps.end());
-  }
-
-  return cmd_args;
-}
-
-class BagWrapper : public rclcpp::Node {
- public:
-  BagWrapper(const FrameTransforms::Config& config,
-             const std::string& bag_path,
-             const std::vector<std::string>& bag_args,
-             const std::vector<std::string>& topic_substitutions,
-             bool verbose)
-      : Node("tf_republisher"), broadcaster_(this) {
-    const auto logger = get_logger();
-    const auto frame_transforms = FrameTransforms::fromConfig(config, logger);
-    const auto transforms =
-        read_static_tfs(bag_path, frame_transforms, verbose ? &logger : nullptr);
-    if (!transforms.empty()) {
-      broadcaster_.sendTransform(transforms);
-    }
-
-    std::vector<StringTransform> topic_transforms;
-    for (const auto& sub : topic_substitutions) {
-      topic_transforms.push_back(
-          StringTransform::from_arg(StringTransform::Type::Substitute, sub, logger));
-    }
-
-    const auto remaps =
-        get_remaps(bag_path, topic_transforms, verbose ? &logger : nullptr);
-
-    const auto cmd_args = get_bag_args(bag_path, bag_args, remaps);
-    child_ = std::make_unique<bp::child>(bp::search_path("ros2"), bp::args(cmd_args));
-
-    auto timer_callback = [this]() -> void {
-      if (child_ && !child_->running()) {
-        rclcpp::shutdown();
-      }
-    };
-
-    timer_ = this->create_wall_timer(10ms, timer_callback);
-  }
-
-  int stop() {
-    int exit_code = 0;
-    if (child_) {
-      child_->wait();
-      exit_code = child_->exit_code();
-    }
-
-    child_.reset();
-    return exit_code;
-  }
-
-  ~BagWrapper() { stop(); }
-
- private:
-  std::unique_ptr<bp::child> child_;
-  rclcpp::TimerBase::SharedPtr timer_;
-  tf2_ros::StaticTransformBroadcaster broadcaster_;
-};
-
-int main(int argc, char** argv) {
-  CLI::App app("Utility to play a rosbag after modfying and publishing transforms");
-
-  // TODO(when 22.04 support ends): re-enable this once all systems use CLI11 >= 2.3.2
-  // argv = app.ensure_utf8(argv);
-
-  app.allow_extras();
-
-  // NOTE(nathan) for whatever reason, this doesn't get handled correctly when we use
-  // the -- separator and multiple bags, so I give up
-  std::filesystem::path bag;
-  app.add_option("bag_path", bag)
-      ->required()
-      ->check(CLI::ExistingPath)
-      ->description("primary bag to read static tfs from");
-
-  bool verbose = false;
-  app.add_flag("-v,--verbose", verbose, "show transform results");
-
-  FrameTransforms::Config config;
-  std::vector<std::string> remaps;
-  app.add_option("-p,--prefix", config.prefix)
-      ->take_last()
-      ->description("prefix to apply to ALL frames");
-  app.add_option("-f,--filter", config.filter)
-      ->join('|')
-      ->description("optional regex filter to drop frames (applied before prefix)");
-  app.add_option("-s,--substitution", config.substitutions)
-      ->description("apply substitution (match and substituion are separated by :)");
-  app.add_option("-t,--topic-substitution", remaps)
-      ->description("apply remap to topics (match and substituion are separated by :)");
-
-  try {
-    app.parse(argc, argv);
-  } catch (const CLI::ParseError& e) {
-    return app.exit(e);
-  }
-
+std::vector<char*> get_ros_args(int argc, char** argv) {
   // filters argc and argv to only have wrapper node args
   std::vector<char*> ros_argv;
   ros_argv.push_back(argv[0]);
@@ -369,11 +29,322 @@ int main(int argc, char** argv) {
     }
   }
 
-  rclcpp::init(ros_argv.size(), ros_argv.data());
+  return ros_argv;
+}
 
-  auto node =
-      std::make_shared<BagWrapper>(config, bag, app.remaining(), remaps, verbose);
-  rclcpp::spin(node);
+PluginVec load_plugins(pluginlib::ClassLoader<ianvs::RosbagPlayPlugin>& loader,
+                       const rclcpp::Logger& logger) {
+  PluginVec plugins;
+  const auto classes = loader.getDeclaredClasses();
+
+  std::stringstream ss;
+  ss << "[";
+  auto iter = classes.begin();
+  while (iter != classes.end()) {
+    ss << *iter;
+    ++iter;
+    if (iter != classes.end()) {
+      ss << ", ";
+    }
+  }
+  ss << "]";
+  RCLCPP_DEBUG_STREAM(logger, "Loading plugin classes: " << ss.str());
+
+  for (const auto& to_load : classes) {
+    try {
+      plugins.push_back(loader.createSharedInstance(to_load));
+    } catch (const pluginlib::PluginlibException& e) {
+      RCLCPP_ERROR_STREAM(logger,
+                          "Unable to load registered plugin '" << to_load << "': " << e.what());
+    }
+  }
+
+  return plugins;
+}
+
+class BagWrapper : public rclcpp::Node {
+ public:
+  BagWrapper();
+  ~BagWrapper();
+
+  void add_options(CLI::App& app);
+  bool start(const std::filesystem::path& bag_path,
+             rosbag2_transport::PlayOptions play_opts,
+             rclcpp::Executor& executor);
+  bool stop();
+  void cleanup(rclcpp::Executor& executor);
+
+  bool running;
+
+ private:
+  bool preprocess_bag(const rosbag2_storage::StorageOptions& opts);
+
+  PluginVec plugins_;
+  pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader_;
+  std::shared_ptr<rosbag2_transport::Player> player_;
+  rclcpp::TimerBase::SharedPtr timer_;
+};
+
+void BagWrapper::add_options(CLI::App& app) {
+  for (const auto& plugin : plugins_) {
+    plugin->init(shared_from_this());
+  }
+
+  for (const auto& plugin : plugins_) {
+    plugin->add_options(app);
+  }
+}
+
+BagWrapper::BagWrapper()
+    : Node("bag_wrapper"), running(false), loader_("ianvs", "ianvs::RosbagPlayPlugin") {
+  plugins_ = load_plugins(loader_, get_logger());
+}
+
+BagWrapper::~BagWrapper() {
+  stop();
+  plugins_.clear();
+}
+
+bool BagWrapper::start(const std::filesystem::path& bag_path,
+                       rosbag2_transport::PlayOptions play_options,
+                       rclcpp::Executor& executor) {
+  using namespace std::chrono_literals;
+  if (!std::filesystem::exists(bag_path)) {
+    return false;
+  }
+
+  rosbag2_storage::StorageOptions storage_opts;
+  storage_opts.uri = bag_path;
+  if (!preprocess_bag(storage_opts)) {
+    return false;
+  }
+
+  for (const auto& plugin : plugins_) {
+    plugin->modify_playback(play_options);
+  }
+
+  running = true;
+
+  YAML::Node play_node;
+  play_node["play_options"] = play_options;
+  RCLCPP_DEBUG_STREAM(get_logger(), play_node);
+
+  auto node_opts = rclcpp::NodeOptions().use_intra_process_comms(true);
+  player_.reset(
+      new rosbag2_transport::Player(storage_opts, play_options, "rosbag2_player", node_opts));
+  player_->play();
+  executor.add_node(player_);
+  auto timer_callback = [this]() -> void {
+    if (player_ && player_->wait_for_playback_to_finish(1ms)) {
+      running = false;
+      timer_->cancel();
+    }
+  };
+
+  timer_ = this->create_wall_timer(10ms, timer_callback);
+  return true;
+}
+
+bool BagWrapper::stop() {
+  if (player_) {
+    player_->stop();
+  }
+
+  player_.reset();
+  return true;
+}
+
+void BagWrapper::cleanup(rclcpp::Executor& executor) {
+  if (rclcpp::ok()) {
+    std::atomic<bool> finished = false;
+    std::thread stop_thread([&]() {
+      for (const auto& plugin : plugins_) {
+        plugin->on_stop();
+      }
+      finished = true;
+    });
+
+    while (!finished) {
+      executor.spin_once(1000ns);
+    }
+
+    stop_thread.join();
+  } else {
+    for (const auto& plugin : plugins_) {
+      plugin->on_stop();
+    }
+  }
+
+  plugins_.clear();
+}
+
+bool BagWrapper::preprocess_bag(const rosbag2_storage::StorageOptions& opts) {
+  auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(opts);
+  if (!reader) {
+    return false;
+  }
+
+  const auto logger = get_logger();
+  reader->open(opts);
+  for (const auto& plugin : plugins_) {
+    plugin->on_start(*reader, &logger);
+  }
+
+  return true;
+}
+
+struct AppArgs {
+  void add_to_app(CLI::App& app);
+
+  std::filesystem::path bag;
+  const rosbag2_transport::PlayOptions& play_options() const { return play; }
+
+ private:
+  rosbag2_transport::PlayOptions play;
+  std::vector<std::string> remaps;
+
+  double play_delay_s = 0.0;
+  double play_duration_s = -1.0;
+  double play_start_offset_s = 0.0;
+
+  std::filesystem::path qos_overrides_path;
+  std::filesystem::path storage_config_path;
+};
+
+void AppArgs::add_to_app(CLI::App& app) {
+  using rosbag2_transport::ServiceRequestsSource;
+  const std::map<std::string, ServiceRequestsSource> mode_mapping{
+      {"service_introspection", ServiceRequestsSource::SERVICE_INTROSPECTION},
+      {"client_introspection", ServiceRequestsSource::CLIENT_INTROSPECTION},
+  };
+
+  app.add_option("bag_path", bag)->required()->description("Bag to open");
+
+  app.add_option("--read-ahead-queue-size", play.read_ahead_queue_size)
+      ->check(CLI::PositiveNumber)
+      ->description("Size of message queue rosbag uses");
+  app.add_option("-r,--rate", play.rate)
+      ->check(CLI::PositiveNumber)
+      ->description("Rate at which to play back messages");
+
+  app.add_option("--topics", play.topics_to_filter)
+      ->description("Space delimited list of topics to play");
+  app.add_option("--services", play.services_to_filter)
+      ->description("Space delimited list of services to play");
+  app.add_option("-e,--regex", play.regex_to_filter)
+      ->description("Play only topics and services matching regular expression");
+  app.add_option("-x,--exclude-regex", play.exclude_regex_to_filter)
+      ->description("Exclude topics and services matching regular expression");
+  app.add_option("--exclude-topics", play.exclude_topics_to_filter)
+      ->description("Space delimited list of topics not to play");
+  app.add_option("--exclude-services", play.exclude_services_to_filter)
+      ->description("Space delimited list of services not to play");
+
+  app.add_option("--qos-profile-overrides-path", qos_overrides_path)
+      ->check(CLI::ExistingFile)
+      ->description("Path to a yaml file defining QoS profile overrides");
+
+  app.add_flag("-l,--loop", play.loop, "Enables loop playback when playing a bagfile");
+
+  app.add_option("-m,--remap", remaps)
+      ->description("List of topics to be remapped in the form 'old:=new'");
+
+  app.add_option("--storage-config-file", storage_config_path)
+      ->check(CLI::ExistingFile)
+      ->description("Path to a yaml file defining storage specific configurations");
+
+  const auto clock_opt = app.add_option("--clock", play.clock_publish_frequency)
+                             ->expected(0, 1)
+                             ->default_val(40.0)
+                             ->description("Publish to '/clock' to act as a ROS time source");
+  app.add_option("--clock-topics", play.clock_trigger_topics)
+      ->description("Space delimited topics that will trigger a '/clock' update");
+  app.add_flag("--clock-topics-all",
+               play.clock_publish_on_topic_publish,
+               "Publishes an update on '/clock' immediately before each replayed message");
+
+  app.add_option("-d,--delay", play_delay_s)
+      ->check(CLI::PositiveNumber)
+      ->description("Sleep duration before play in seconds");
+  app.add_option("--playback-duration", play_duration_s)
+      ->description("Playback duration, in seconds");
+  app.add_option("--playback-until-nsec", play.playback_until_timestamp)
+      ->description("Playback until timestamp, expressed in nanoseconds since epoch");
+
+  app.add_flag("--disable-keyboard-controls", play.disable_keyboard_controls, "Disables controls");
+  app.add_flag("-p,--start-paused", play.start_paused, "Start in a paused state");
+  app.add_option("--start-offset", play_start_offset_s)
+      ->description("Start the playback player this many seconds into the bag file");
+
+  // TODO(nathan) this might be milliseconds on the CLI side
+  app.add_option("--wait-for-all-acked", play.wait_acked_timeout)
+      ->description("Timeout for subscription acknlowedgement");
+  app.add_flag("--disable-loan-message", play.disable_loan_message, "Disable loaned messages");
+  app.add_flag("--publish-service-requests",
+               play.publish_service_requests,
+               "Publish recorded service requests instead of recorded service events");
+  app.add_option("--service-requests-source", play.service_requests_source)
+      ->check(CLI::Transformer(mode_mapping))
+      ->description("Set the source of the service requests to be replayed");
+
+  app.final_callback([this, clock_opt]() {
+    play.topic_remapping_options.push_back("--ros-args");
+    for (const auto& mapping : remaps) {
+      play.topic_remapping_options.push_back("--remap");
+      play.topic_remapping_options.push_back(mapping);
+    }
+
+    if (!clock_opt->count()) {
+      play.clock_publish_frequency = 0.0;
+    } else {
+      play.exclude_topics_to_filter.push_back("/clock");
+    }
+
+    play.delay = rclcpp::Duration::from_seconds(play_delay_s);
+    play.playback_duration = rclcpp::Duration::from_seconds(play_duration_s);
+    play.start_offset = rclcpp::Duration::from_seconds(play_start_offset_s).nanoseconds();
+  });
+}
+
+int main(int argc, char** argv) {
+  const auto ros_argv = get_ros_args(argc, argv);
+  rclcpp::init(ros_argv.size(), ros_argv.data());
+  rclcpp::get_logger("rosbag2_storage").set_level(rclcpp::Logger::Level::Warn);
+
+  rclcpp::executors::MultiThreadedExecutor executor;
+  auto node = std::make_shared<BagWrapper>();
+  executor.add_node(node);
+
+  CLI::App app("Utility to play a rosbag after modfying and publishing transforms");
+  // argv = app.ensure_utf8(argv); // TODO(nathan): re-enable this after 22.04 EOL
+  app.allow_extras();
+  app.get_formatter()->column_width(50);
+
+  AppArgs args;
+  args.add_to_app(app);
+
+  auto plugin_app = app.add_option_group("Plugins", "Command line arguments for player plugins");
+  node->add_options(*plugin_app);
+
+  try {
+    app.parse(argc, argv);
+  } catch (const CLI::ParseError& e) {
+    node->cleanup(executor);
+    rclcpp::shutdown();
+    return app.exit(e);
+  }
+
+  if (!node->start(args.bag, args.play_options(), executor)) {
+    node->cleanup(executor);
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  while (rclcpp::ok() && node->running) {
+    executor.spin_once(1000ns);
+  }
+
+  node->stop();
+  node->cleanup(executor);
   rclcpp::shutdown();
-  return node->stop();
 }

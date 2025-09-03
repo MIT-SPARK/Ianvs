@@ -32,83 +32,47 @@
  * Government is authorized to reproduce and distribute reprints for Government
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
-#pragma once
-#include <map>
-#include <string>
 
-#include "ianvs/node_handle.h"
+#include "ianvs/detail/string_transforms.h"
 
-namespace ianvs {
+#include <rclcpp/logger.hpp>
+#include <rclcpp/logging.hpp>
 
-template <typename Derived>
-struct publisher_type_trait;
+namespace ianvs::detail {
 
-// NOTE(nathan) CRTP or something similar seems necessary here becuase the various
-// publisher types need something common (the Derived class) to hold construction
-// information
-template <typename Derived>
-class LazyPublisherGroup {
- public:
-  virtual ~LazyPublisherGroup() = default;
+StringTransform::StringTransform(const std::string& expr, const std::string& sub)
+    : expr(std::regex(expr)), sub(sub) {}
 
-  template <typename Callback>
-  void publish(const std::string& topic, const Callback& callback) const {
-    const auto derived = static_cast<const Derived*>(this);
-    auto iter = pubs_.find(topic);
-    if (iter == pubs_.end()) {
-      iter = pubs_.emplace(topic, derived->make_publisher(topic)).first;
+StringTransform StringTransform::from_arg(Type type,
+                                          const std::string& arg,
+                                          const rclcpp::Logger* logger) {
+  switch (type) {
+    case Type::Substitute: {
+      const auto pos = arg.find(":");
+      if (pos == std::string::npos) {
+        if (logger) {
+          RCLCPP_WARN_STREAM(*logger, "Invalid substitution: '" << arg << "'");
+        }
+
+        return StringTransform("", "");
+      }
+
+      const auto expr = arg.substr(0, pos);
+      const auto sub = arg.substr(pos + 1);
+      return StringTransform(expr, sub);
     }
-
-    if (!derived->should_publish(iter->second)) {
-      return;
-    }
-
-    derived->publish_msg(iter->second, callback());
+    case Type::Filter:
+      return StringTransform(arg, "");
+    case Type::Prefix:
+      return StringTransform("^.+", arg + "$&");
+    default:
+      return StringTransform("", "");
   }
+}
 
- private:
-  friend Derived;
-  LazyPublisherGroup() = default;
+std::string StringTransform::apply(const std::string& orig) const {
+  std::regex re(expr);
+  return std::regex_replace(orig, re, sub);
+}
 
-  using PublisherT = typename publisher_type_trait<Derived>::value;
-  mutable std::map<std::string, PublisherT> pubs_;
-};
-
-template <typename T>
-struct RosPublisherGroup;
-
-template <typename T>
-struct publisher_type_trait<RosPublisherGroup<T>> {
-  using value = typename rclcpp::Publisher<T>::SharedPtr;
-};
-
-template <typename T>
-struct RosPublisherGroup : LazyPublisherGroup<RosPublisherGroup<T>> {
- public:
-  using Base = LazyPublisherGroup<RosPublisherGroup<T>>;
-  using Pub = typename rclcpp::Publisher<T>::SharedPtr;
-
-  explicit RosPublisherGroup(NodeHandle nh, const rclcpp::QoS& qos = rclcpp::QoS(1))
-      : nh_(nh), qos(qos) {}
-
-  Pub make_publisher(const std::string& topic) const { return nh_.create_publisher<T>(topic, qos); }
-
-  bool should_publish(const Pub& pub) const { return pub->get_subscription_count() > 0; }
-
-  void publish_msg(const Pub& pub, typename T::UniquePtr&& msg) const {
-    pub->publish(std::move(msg));
-  }
-
-  void publish_msg(const Pub& pub, const T& msg) const { pub->publish(msg); }
-
-  void publish_msg(const Pub& pub, const typename T::ConstSharedPtr& msg) const {
-    pub->publish(*msg);
-  }
-
-  const rclcpp::QoS qos;
-
- private:
-  mutable NodeHandle nh_;
-};
-
-}  // namespace ianvs
+}  // namespace ianvs::detail
