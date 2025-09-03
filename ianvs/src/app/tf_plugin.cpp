@@ -158,7 +158,8 @@ void TFPlugin::add_options(CLI::App& app) {
 
 void TFPlugin::modify_playback(rosbag2_transport::PlayOptions& options) {
   // TODO(nathan) also double-check exclusion regex
-  std::set<std::string> excluded(options.exclude_topics_to_filter.begin(), options.exclude_topics_to_filter.end());
+  std::set<std::string> excluded(options.exclude_topics_to_filter.begin(),
+                                 options.exclude_topics_to_filter.end());
   if (excluded.count("/tf_static")) {
     broadcaster_.reset();
   }
@@ -177,7 +178,7 @@ void TFPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logge
   }
 
   if (!broadcaster_) {
-    return; // don't do work if we don't publish static transforms
+    return;  // don't do work if we don't publish static transforms
   }
 
   PoseMap pose_map;
