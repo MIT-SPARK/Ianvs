@@ -38,12 +38,17 @@ This will fail for non-python executables.
 
 ## Utilities
 
-Ianvs includes an utility for playing a rosbag after modifying the static transforms.
+Ianvs includes an utility for playing a rosbag while modifying remappings, `/tf_static` and `/tf`.
 The general usage is below:
 ```
 ros2 run ianvs /path/to/bag [-p prefix] [-s expr:sub]... [-f filter]... [-- ros2 bag play args]
 ```
 The `--` separator is optional in general, but necessary to deconflict with the `--start-paused` or `--storage` flags for the `ros2 bag play` command.
+
+For the most part, this has identical options to the `ros2 bag play` command, but does not handle QoS service overrides at the moment (the parsing of the QoS overrides from YAML happens in the `ros2bag` python executable instead of `rosbag2_transport`). We hope to (mostly) maintain feature parity.
+
+> :warning: **Warning** </br>
+> The way the underlying rosbag player is wrapped is a little sketchy still and might occasionally die
 
 # About the Name
 
