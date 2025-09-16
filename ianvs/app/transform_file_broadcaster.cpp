@@ -10,9 +10,8 @@ class TransformFileBroadcaster : public rclcpp::Node {
   TransformFileBroadcaster()
       : Node("transform_file_broadcaster"),
         broadcaster_(new tf2_ros::StaticTransformBroadcaster(this)) {
-    declare_parameter("filepath", "");
-    std::string filepath;
-    get_parameter("filepath", filepath);
+    const auto prefix = declare_parameter("prefix", "");
+    const auto filepath = declare_parameter("filepath", "");
     if (filepath.empty()) {
       RCLCPP_WARN_STREAM(get_logger(), "No filepath provided!");
       broadcaster_.reset();
@@ -32,10 +31,17 @@ class TransformFileBroadcaster : public rclcpp::Node {
     try {
       const auto node = YAML::LoadFile(transform_file);
       for (const auto& tf : node["frames"]) {
+        std::string frame_id = tf["frame_id"].as<std::string>();
+        std::string child_id = tf["child_frame_id"].as<std::string>();
+        if (!prefix.empty()) {
+          frame_id = prefix + frame_id;
+          child_id = prefix + child_id;
+        }
+
         auto& msg = transforms.emplace_back();
         msg.header.stamp = stamp;
-        msg.header.frame_id = tf["frame_id"].as<std::string>();
-        msg.child_frame_id = tf["child_frame_id"].as<std::string>();
+        msg.header.frame_id = frame_id;
+        msg.child_frame_id = child_id;
         msg.transform.translation.x = tf["x"].as<double>();
         msg.transform.translation.y = tf["y"].as<double>();
         msg.transform.translation.z = tf["z"].as<double>();

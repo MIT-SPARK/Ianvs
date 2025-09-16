@@ -12,15 +12,17 @@
 using namespace std::chrono_literals;
 using PluginVec = std::vector<std::shared_ptr<ianvs::RosbagPlayPlugin>>;
 
-std::vector<char*> get_ros_args(int argc, char** argv) {
+std::vector<char*> get_ros_args(int& argc, char** argv) {
   // filters argc and argv to only have wrapper node args
   std::vector<char*> ros_argv;
   ros_argv.push_back(argv[0]);
 
   bool found_ros_args = false;
-  for (int i = 1; i < argc; ++i) {
+  const int max_args = argc;
+  for (int i = 1; i < max_args; ++i) {
     std::string arg(argv[i]);
     if (arg == "--ros-args") {
+      argc = i;
       found_ros_args = true;
     }
 
