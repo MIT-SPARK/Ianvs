@@ -21,6 +21,7 @@ class TopicRemapPlugin : public RosbagPlayPlugin {
   void on_stop() override {}
 
  private:
+  std::string prefix;
   std::vector<std::string> remaps;
   std::vector<std::string> bag_args;
 };
@@ -30,6 +31,7 @@ TopicRemapPlugin::TopicRemapPlugin() {}
 void TopicRemapPlugin::add_options(CLI::App& app) {
   app.add_option("-t,--topic-substitution", remaps)
       ->description("Apply remap to topics (match and substitution are separated by :)");
+  app.add_option("--topic-prefix", prefix)->description("Remap topics to have new prefix");
 }
 
 using ArgVec = std::vector<std::string>;
@@ -45,6 +47,10 @@ void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logge
     transforms.push_back(StringTransform::from_arg(StringTransform::Type::Substitute, sub, logger));
   }
 
+  if (!prefix.empty()) {
+    transforms.push_back(StringTransform::from_arg(StringTransform::Type::Prefix, prefix, logger));
+  }
+
   const auto all_topics = reader.get_all_topics_and_types();
 
   for (const auto& data : all_topics) {
@@ -57,6 +63,7 @@ void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logge
       continue;
     }
 
+    bag_args.push_back("-r");
     bag_args.push_back(data.name + ":=" + topic);
     if (logger) {
       RCLCPP_INFO_STREAM(*logger, "Remapping '" << data.name << "' -> '" << topic << "'");
