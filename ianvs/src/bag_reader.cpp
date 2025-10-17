@@ -1,39 +1,41 @@
 #include "ianvs/bag_reader.h"
 
+#include <rosbag2_transport/reader_writer_factory.hpp>
+
 namespace ianvs {
 
 BagReader::BagReader(const std::filesystem::path& bagpath) {
   rosbag2_storage::StorageOptions opts;
   opts.uri = bagpath;
-  reader = rosbag2_transport::ReaderWriterFactory::make_reader(opts);
-  if (!reader) {
+  reader_ = rosbag2_transport::ReaderWriterFactory::make_reader(opts);
+  if (!reader_) {
     return;
   }
 
-  reader->open(opts);
+  reader_->open(opts);
 
-  const auto metadata = reader->get_all_topics_and_types();
+  const auto metadata = reader_->get_all_topics_and_types();
   for (const auto& data : metadata) {
-    lookup[data.name] = std::make_shared<rosbag2_storage::TopicMetadata>(data);
+    lookup_[data.name] = data;
   }
 }
 
-MessageInfo BagReader::next() const {
-  while (reader->has_next()) {
-    auto msg = reader->read_next();
+BagMessage::Ptr BagReader::next() const {
+  while (reader_->has_next()) {
+    auto msg = reader_->read_next();
     if (!msg) {
       continue;
     }
 
-    auto iter = lookup.find(msg->topic_name);
-    if (iter == lookup.end()) {
+    auto iter = lookup_.find(msg->topic_name);
+    if (iter == lookup_.end()) {
       continue;
     }
 
-    return {msg, iter->second};
+    return std::make_shared<BagMessage>(msg, iter->second);
   }
 
-  return {};
+  return nullptr;
 }
 
 }  // namespace ianvs
