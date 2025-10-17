@@ -26,6 +26,11 @@ struct BagMessage {
   }
 
   template <typename T>
+  bool is() const {
+    return metadata.type == rosidl_generator_traits::name<T>();
+  }
+
+  template <typename T>
   typename T::Ptr as() const {
     const auto name = rosidl_generator_traits::name<T>();
     if (metadata.type != name) {
