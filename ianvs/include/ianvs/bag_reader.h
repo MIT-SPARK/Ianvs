@@ -6,10 +6,12 @@ namespace ianvs {
 
 struct MessageInfo {
   std::shared_ptr<rosbag2_storage::SerializedBagMessage> contents;
-  const rosbag2_storage::TopicMetadata* metadata = nullptr;
+  std::shared_ptr<rosbag2_storage::TopicMetadata> metadata;
+
+  operator bool() const { return contents != nullptr && metadata != nullptr; }
   std::string topic() const { return contents ? contents->topic_name : ""; }
   std::string type() const { return metadata ? metadata->type : ""; }
-  operator bool() const { return contents != nullptr && metadata != nullptr; }
+
   rclcpp::SerializedMessage serialized() const {
     return rclcpp::SerializedMessage(*contents->serialized_data);
   }
@@ -39,7 +41,7 @@ struct BagReader {
   operator bool() const { return reader != nullptr; }
 
   std::unique_ptr<rosbag2_cpp::Reader> reader;
-  std::map<std::string, rosbag2_storage::TopicMetadata> lookup;
+  std::map<std::string, std::shared_ptr<rosbag2_storage::TopicMetadata>> lookup;
 };
 
 }  // namespace ianvs

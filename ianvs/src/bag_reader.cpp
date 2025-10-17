@@ -14,7 +14,7 @@ BagReader::BagReader(const std::filesystem::path& bagpath) {
 
   const auto metadata = reader->get_all_topics_and_types();
   for (const auto& data : metadata) {
-    lookup[data.name] = data;
+    lookup[data.name] = std::make_shared<rosbag2_storage::TopicMetadata>(data);
   }
 }
 
@@ -27,11 +27,10 @@ MessageInfo BagReader::next() const {
 
     auto iter = lookup.find(msg->topic_name);
     if (iter == lookup.end()) {
-      SLOG(ERROR) << "no find metadata for topic '" << msg->topic_name << "'";
       continue;
     }
 
-    return {msg, &iter->second};
+    return {msg, iter->second};
   }
 
   return {};
