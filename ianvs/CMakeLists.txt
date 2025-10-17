@@ -54,12 +54,23 @@ endif()
 add_library(ament_shim INTERFACE)
 ament_target_dependencies(ament_shim INTERFACE tf2_msgs tf2_ros)
 
+add_library(${PROJECT_NAME}_rosbag src/bag_reader.cpp)
+add_library(ianvs::${PROJECT_NAME}_rosbag ALIAS ${PROJECT_NAME}_rosbag)
+target_link_libraries(
+  ${PROJECT_NAME}_rosbag PUBLIC rosbag2_transport::rosbag2_transport rclcpp::rclcpp
+)
+target_include_directories(
+  ${PROJECT_NAME}_rosbag PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                                $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+if(NOT BUILD_SHARED_LIBS)
+  set_property(TARGET ${PROJECT_NAME}_rosbag PROPERTY POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # various plugins for executables to load
 add_library(
-  ${PROJECT_NAME}_plugins SHARED
-  src/app/signal_stop_plugin.cpp
-  src/app/tf_plugin.cpp
-  src/app/topic_remap_plugin.cpp
+  ${PROJECT_NAME}_plugins SHARED src/app/signal_stop_plugin.cpp src/app/tf_plugin.cpp
+                                 src/app/topic_remap_plugin.cpp
 )
 target_link_libraries(
   ${PROJECT_NAME}_plugins PUBLIC ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
@@ -93,7 +104,8 @@ ament_target_dependencies(_${PROJECT_NAME}_bindings PUBLIC sensor_msgs)
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
-  TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_plugins play_rosbag merge_rosbags transform_file_broadcaster
+  TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_plugins ${PROJECT_NAME}_rosbag play_rosbag
+          merge_rosbags transform_file_broadcaster
   EXPORT ${PROJECT_NAME}-exports
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
