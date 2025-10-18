@@ -49,6 +49,7 @@ class BagReader {
  public:
   explicit BagReader(const std::filesystem::path& bagpath);
   BagMessage::Ptr next() const;
+  size_t message_count() const;
   operator bool() const { return reader_ != nullptr; }
 
  private:

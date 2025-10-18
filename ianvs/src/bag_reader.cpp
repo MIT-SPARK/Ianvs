@@ -38,4 +38,13 @@ BagMessage::Ptr BagReader::next() const {
   return nullptr;
 }
 
+size_t BagReader::message_count() const {
+  size_t num_messages = 0;
+  for (const auto& entry : reader_->get_metadata().topics_with_message_count) {
+    num_messages += entry.message_count;
+  }
+
+  return num_messages;
+}
+
 }  // namespace ianvs
