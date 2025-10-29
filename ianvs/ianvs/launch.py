@@ -37,9 +37,12 @@ class PyenvPrefix(Substitution):
 
     def perform(self, context: LaunchContext) -> Text:
         pyenv = perform_substitutions(context, self.pyenv)
-        pyinterp = pathlib.Path(pyenv) / "bin" / "python"
-        if not pyinterp.exists():
-            raise ValueError(f"Interperter '{pyinterp}' not found for venv '{pyenv}'")
+        if pyenv:
+            pyinterp = pathlib.Path(pyenv) / "bin" / "python"
+            if not pyinterp.exists():
+                raise ValueError(f"Interperter '{pyinterp}' not found for venv '{pyenv}'")
+        else:
+            pyinterp = ""
 
         if self.prefix is None:
             return str(pyinterp)
