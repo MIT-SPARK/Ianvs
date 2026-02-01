@@ -10,6 +10,7 @@ jobs:
         with: {path: src/ianvs}
       - name: Dependencies
         run: |
+          apt update
           rosdep update --rosdistro jazzy && rosdep install --rosdistro jazzy --from-paths src --ignore-src -r -y
       - name: Build
         shell: bash
