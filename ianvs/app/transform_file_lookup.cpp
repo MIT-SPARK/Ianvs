@@ -5,6 +5,7 @@
 
 #include <CLI/CLI.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <tf2/LinearMath/Matrix3x3.hpp>
 #include <tf2/buffer_core.hpp>
 
 using geometry_msgs::msg::TransformStamped;
@@ -26,6 +27,7 @@ struct AppArgs {
   std::string to_frame;
   bool set_precision = true;
   size_t precision = 3;
+  size_t column_width = 4;
   FormatEnum tf_format = FormatEnum::JSON;
 
   void add_to_app(CLI::App& app);
@@ -42,6 +44,9 @@ void AppArgs::add_to_app(CLI::App& app) {
       ->description("set output stream precision");
   app.add_option("--precision,-p", precision)
       ->description("output stream precision")
+      ->check(CLI::PositiveNumber);
+  app.add_option("--column-width,-w", column_width)
+      ->description("matrix column width when printing")
       ->check(CLI::PositiveNumber);
 
   const static std::map<std::string, FormatEnum> format_names{{"flat", FormatEnum::FLAT},
@@ -92,6 +97,29 @@ std::string getFrameList(const tf2::BufferCore& buffer) {
   return ss.str();
 }
 
+std::string transformToMat(const AppArgs& args,
+                           const geometry_msgs::msg::Quaternion& rot,
+                           const geometry_msgs::msg::Vector3& pos) {
+  std::stringstream ss;
+  size_t width = args.column_width;
+  if (args.set_precision) {
+    ss << std::fixed << std::setprecision(args.precision);
+    width += args.precision;
+  }
+
+  tf2::Quaternion q(rot.x, rot.y, rot.z, rot.w);
+  tf2::Matrix3x3 mat(q);
+  ss << "[[" << std::setw(width) << mat[0][0] << ", " << std::setw(width) << mat[0][1] << ", "
+     << std::setw(width) << mat[0][2] << ", " << std::setw(width) << pos.x << "],\n";
+  ss << " [" << std::setw(width) << mat[1][0] << ", " << std::setw(width) << mat[1][1] << ", "
+     << std::setw(width) << mat[1][2] << ", " << std::setw(width) << pos.y << "],\n";
+  ss << " [" << std::setw(width) << mat[2][0] << ", " << std::setw(width) << mat[2][1] << ", "
+     << std::setw(width) << mat[2][2] << ", " << std::setw(width) << pos.z << "],\n";
+  ss << " [" << std::setw(width) << 0.0 << ", " << std::setw(width) << 0.0 << ", "
+     << std::setw(width) << 0.0 << ", " << std::setw(width) << 1.0 << "]]";
+  return ss.str();
+}
+
 std::string showTransform(const TransformStamped& tf, const AppArgs& args) {
   std::stringstream ss;
   const auto from = tf.child_frame_id;
@@ -108,6 +136,7 @@ std::string showTransform(const TransformStamped& tf, const AppArgs& args) {
          << " " << rot.w;
       break;
     case FormatEnum::HOMOGENEOUS:
+      ss << transformToMat(args, rot, pos);
       break;
     case FormatEnum::JSON:
       ss << "{'" << to << "_T_" << from << "': {'pos': [" << pos.x << ", " << pos.y << ", " << pos.z
