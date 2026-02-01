@@ -29,6 +29,7 @@ find_package(rclcpp REQUIRED)
 find_package(rosbag2_transport REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(yaml-cpp REQUIRED)
@@ -102,6 +103,10 @@ add_executable(transform_file_broadcaster app/transform_file_broadcaster.cpp)
 ament_target_dependencies(transform_file_broadcaster PUBLIC tf2_ros rclcpp)
 target_link_libraries(transform_file_broadcaster PUBLIC yaml-cpp::yaml-cpp)
 
+add_executable(transform_file_lookup app/transform_file_lookup.cpp)
+ament_target_dependencies(transform_file_lookup PUBLIC tf2)
+target_link_libraries(transform_file_lookup PUBLIC yaml-cpp::yaml-cpp)
+
 pybind11_add_module(
   _${PROJECT_NAME}_bindings src/bindings/image_encodings.cpp src/bindings/module.cpp
 )
@@ -114,8 +119,13 @@ ament_target_dependencies(_${PROJECT_NAME}_bindings PUBLIC sensor_msgs)
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
-  TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_plugins ${PROJECT_NAME}_rosbag play_rosbag
-          merge_rosbags transform_file_broadcaster
+  TARGETS ${PROJECT_NAME}
+          ${PROJECT_NAME}_plugins
+          ${PROJECT_NAME}_rosbag
+          play_rosbag
+          merge_rosbags
+          transform_file_broadcaster
+          transform_file_lookup
   EXPORT ${PROJECT_NAME}-exports
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib

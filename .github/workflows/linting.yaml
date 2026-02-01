@@ -1,5 +1,4 @@
 name: Ianvs Linting
-run-name: linting
 on: push
 jobs:
   linting:
