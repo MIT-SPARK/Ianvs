@@ -3,8 +3,8 @@
 namespace ianvs {
 namespace {
 
-inline std::string regex_append(const std::string& regex_string, const std::string& new_regex) {
-  return regex_string.empty() ? new_regex : regex_string + "|" + new_regex;
+inline void regex_append(std::string& regex_string, const std::string& new_regex) {
+  regex_string += regex_string.empty() ? new_regex : "|" + new_regex;
 }
 
 }  // namespace
