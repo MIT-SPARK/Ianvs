@@ -13,7 +13,7 @@ class SignalStopPlugin : public RosbagPlayPlugin {
   void add_options(CLI::App& app) override;
   void on_start(rosbag2_cpp::Reader&,
                 rosbag2_transport::PlayOptions&,
-                const rclcpp::Logger*) override;
+                const rclcpp::Logger*) override {}
   void on_stop() override;
 
  private:

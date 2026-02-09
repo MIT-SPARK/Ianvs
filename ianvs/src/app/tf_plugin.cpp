@@ -7,6 +7,7 @@
 #include <tf2_msgs/msg/tf_message.hpp>
 
 #include "ianvs/app/rosbag_play_plugins.h"
+#include "ianvs/detail/bag_topic_checker.h"
 #include "ianvs/detail/string_transforms.h"
 
 namespace ianvs {
@@ -160,7 +161,8 @@ void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
                         const rclcpp::Logger* logger) {
   remapper_ = std::make_unique<FrameRemapper>(config.transforms(logger));
 
-  if (config.filter_dynamic) {
+  BagTopicChecker checker(options);
+  if (config.filter_dynamic && checker.passes("/tf")) {
     options.topic_remapping_options.push_back("--remap");
     options.topic_remapping_options.push_back("/tf:=" + tf_topic_);
     dynamic_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
@@ -170,14 +172,13 @@ void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
         std::bind(&TFPlugin::callback, this, std::placeholders::_1));
   }
 
-  // TODO(nathan) also double-check exclusion regex
-
   std::set<std::string> excluded(options.exclude_topics_to_filter.begin(),
                                  options.exclude_topics_to_filter.end());
-  if (excluded.count("/tf_static")) {
-    broadcaster_.reset();
+  if (!checker.passes("/tf_static")) {
+    return;
   }
 
+  broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node_);
   options.exclude_topics_to_filter.push_back("/tf_static");
 
   PoseMap pose_map;
@@ -192,7 +193,6 @@ void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
     remapper_->updatePoseMap(*tf_msg, pose_map, logger);
   }
 
-  broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node_);
   publishStaticTFs(pose_map);
 }
 
