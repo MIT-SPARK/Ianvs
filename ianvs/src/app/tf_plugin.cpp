@@ -10,6 +10,9 @@
 #include "ianvs/detail/string_transforms.h"
 
 namespace ianvs {
+
+using detail::StringTransform;
+
 namespace {
 
 inline std::string frame_name(const std::string& dest, const std::string& src) {
@@ -19,7 +22,6 @@ inline std::string frame_name(const std::string& dest, const std::string& src) {
 }  // namespace
 
 using Transform = geometry_msgs::msg::TransformStamped;
-using detail::StringTransform;
 using tf2_msgs::msg::TFMessage;
 
 using PoseMap = std::map<std::string, std::map<std::string, Transform>>;
@@ -50,8 +52,9 @@ class TFPlugin : public RosbagPlayPlugin {
 
   void init(std::shared_ptr<rclcpp::Node> node) override;
   void add_options(CLI::App& app) override;
-  void modify_playback(rosbag2_transport::PlayOptions& options) override;
-  void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) override;
+  void on_start(rosbag2_cpp::Reader& reader,
+                rosbag2_transport::PlayOptions& options,
+                const rclcpp::Logger* logger = nullptr) override;
   void on_stop() override {}
 
   const rclcpp::Serialization<TFMessage> serialization;
@@ -61,6 +64,7 @@ class TFPlugin : public RosbagPlayPlugin {
   void publishStaticTFs(const PoseMap& pose_map);
 
   std::string tf_topic_;
+  std::shared_ptr<rclcpp::Node> node_;
   std::unique_ptr<FrameRemapper> remapper_;
   rclcpp::Subscription<TFMessage>::SharedPtr sub_;
   std::unique_ptr<tf2_ros::StaticTransformBroadcaster> broadcaster_;
@@ -135,13 +139,8 @@ std::vector<StringTransform> TFPlugin::Config::transforms(const rclcpp::Logger* 
 TFPlugin::TFPlugin() {}
 
 void TFPlugin::init(std::shared_ptr<rclcpp::Node> node) {
-  tf_topic_ = node->get_node_topics_interface()->resolve_topic_name("~/_tf");
-  broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node);
-  dynamic_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node);
-  sub_ = node->create_subscription<TFMessage>(
-      tf_topic_,
-      tf2_ros::DynamicListenerQoS(),
-      std::bind(&TFPlugin::callback, this, std::placeholders::_1));
+  node_ = node;
+  tf_topic_ = node_->get_node_topics_interface()->resolve_topic_name("~/_tf");
 }
 
 void TFPlugin::add_options(CLI::App& app) {
@@ -156,8 +155,23 @@ void TFPlugin::add_options(CLI::App& app) {
   app.add_flag("--filter-dynamic", config.filter_dynamic, "enable filtering /tf");
 }
 
-void TFPlugin::modify_playback(rosbag2_transport::PlayOptions& options) {
+void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
+                        rosbag2_transport::PlayOptions& options,
+                        const rclcpp::Logger* logger) {
+  remapper_ = std::make_unique<FrameRemapper>(config.transforms(logger));
+
+  if (config.filter_dynamic) {
+    options.topic_remapping_options.push_back("--remap");
+    options.topic_remapping_options.push_back("/tf:=" + tf_topic_);
+    dynamic_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
+    sub_ = node_->create_subscription<TFMessage>(
+        tf_topic_,
+        tf2_ros::DynamicListenerQoS(),
+        std::bind(&TFPlugin::callback, this, std::placeholders::_1));
+  }
+
   // TODO(nathan) also double-check exclusion regex
+
   std::set<std::string> excluded(options.exclude_topics_to_filter.begin(),
                                  options.exclude_topics_to_filter.end());
   if (excluded.count("/tf_static")) {
@@ -165,21 +179,6 @@ void TFPlugin::modify_playback(rosbag2_transport::PlayOptions& options) {
   }
 
   options.exclude_topics_to_filter.push_back("/tf_static");
-  if (config.filter_dynamic) {
-    options.topic_remapping_options.push_back("--remap");
-    options.topic_remapping_options.push_back("/tf:=" + tf_topic_);
-  }
-}
-
-void TFPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger) {
-  remapper_ = std::make_unique<FrameRemapper>(config.transforms(logger));
-  if (!config.filter_dynamic) {
-    dynamic_broadcaster_.reset();
-  }
-
-  if (!broadcaster_) {
-    return;  // don't do work if we don't publish static transforms
-  }
 
   PoseMap pose_map;
   rosbag2_storage::StorageFilter filter;
@@ -193,6 +192,7 @@ void TFPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logge
     remapper_->updatePoseMap(*tf_msg, pose_map, logger);
   }
 
+  broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node_);
   publishStaticTFs(pose_map);
 }
 
