@@ -28,25 +28,16 @@ using tf2_msgs::msg::TFMessage;
 using PoseMap = std::map<std::string, std::map<std::string, Transform>>;
 using ArgVec = std::vector<std::string>;
 
-struct FrameRemapper {
-  FrameRemapper(const std::vector<StringTransform>& transforms) : transforms(transforms) {}
-  std::string remapFrame(const std::string& frame_id) const;
-  void updatePoseMap(const TFMessage& msg,
-                     PoseMap& pose_map,
-                     const rclcpp::Logger* logger = nullptr);
-
-  const std::vector<StringTransform> transforms;
-};
+struct FrameRemapper;
 
 class TFPlugin : public RosbagPlayPlugin {
  public:
   struct Config {
     std::string prefix;
     std::string filter;
+    std::string keep;
     std::vector<std::string> substitutions;
     bool filter_dynamic = false;
-
-    std::vector<StringTransform> transforms(const rclcpp::Logger* logger = nullptr) const;
   } config;
 
   TFPlugin();
@@ -72,7 +63,65 @@ class TFPlugin : public RosbagPlayPlugin {
   std::unique_ptr<tf2_ros::TransformBroadcaster> dynamic_broadcaster_;
 };
 
+struct FrameRemapper {
+  explicit FrameRemapper(const TFPlugin::Config& config, const rclcpp::Logger* logger = nullptr);
+
+  std::string remapFrame(const std::string& frame_id) const;
+  void updatePoseMap(const TFMessage& msg,
+                     PoseMap& pose_map,
+                     const rclcpp::Logger* logger = nullptr);
+
+  bool shouldKeep(const std::string& frame_id) const;
+  bool shouldFilter(const std::string& frame_id) const;
+
+  std::vector<StringTransform> transforms;
+  std::optional<std::regex> keep;
+  std::optional<std::regex> filter;
+};
+
+FrameRemapper::FrameRemapper(const TFPlugin::Config& config, const rclcpp::Logger* logger) {
+  if (!config.filter.empty()) {
+    filter = std::regex(config.filter);
+  }
+
+  if (!config.keep.empty()) {
+    keep = std::regex(config.keep);
+  }
+
+  if (!config.prefix.empty()) {
+    transforms.push_back(
+        StringTransform::from_arg(StringTransform::Type::Prefix, config.prefix, logger));
+  }
+
+  for (const auto& arg : config.substitutions) {
+    transforms.push_back(StringTransform::from_arg(StringTransform::Type::Substitute, arg, logger));
+  }
+}
+
+bool FrameRemapper::shouldKeep(const std::string& frame_id) const {
+  if (!keep) {
+    return true;
+  }
+
+  std::smatch match;
+  return std::regex_match(frame_id, match, *keep);
+}
+
+bool FrameRemapper::shouldFilter(const std::string& frame_id) const {
+  if (!filter) {
+    return false;
+  }
+
+  std::smatch match;
+  const bool should_filter = std::regex_match(frame_id, match, *filter);
+  return should_filter;
+}
+
 std::string FrameRemapper::remapFrame(const std::string& frame_id) const {
+  if (shouldFilter(frame_id) || !shouldKeep(frame_id)) {
+    return "";
+  }
+
   std::string result = frame_id;
   for (const auto& transform : transforms) {
     result = transform.apply(result);
@@ -120,23 +169,6 @@ void FrameRemapper::updatePoseMap(const TFMessage& msg,
   }
 }
 
-std::vector<StringTransform> TFPlugin::Config::transforms(const rclcpp::Logger* logger) const {
-  std::vector<StringTransform> transforms;
-  if (!filter.empty()) {
-    transforms.push_back(StringTransform::from_arg(StringTransform::Type::Filter, filter, logger));
-  }
-
-  if (!prefix.empty()) {
-    transforms.push_back(StringTransform::from_arg(StringTransform::Type::Prefix, prefix, logger));
-  }
-
-  for (const auto& arg : substitutions) {
-    transforms.push_back(StringTransform::from_arg(StringTransform::Type::Substitute, arg, logger));
-  }
-
-  return transforms;
-}
-
 TFPlugin::TFPlugin() {}
 
 void TFPlugin::init(std::shared_ptr<rclcpp::Node> node) {
@@ -145,21 +177,24 @@ void TFPlugin::init(std::shared_ptr<rclcpp::Node> node) {
 }
 
 void TFPlugin::add_options(CLI::App& app) {
-  app.add_option("-p,--prefix", config.prefix)
+  app.add_option("-p,--prefix-frames", config.prefix)
       ->take_last()
       ->description("prefix to apply to ALL frames");
-  app.add_option("-f,--filter", config.filter)
+  app.add_option("-f,--filter-frames", config.filter)
       ->join('|')
       ->description("optional regex filter to drop frames (applied before prefix)");
-  app.add_option("-s,--substitution", config.substitutions)
-      ->description("apply substitution (match and substituion are separated by :)");
-  app.add_flag("--filter-dynamic", config.filter_dynamic, "enable filtering /tf");
+  app.add_option("-k,--keep-frames", config.keep)
+      ->join('|')
+      ->description("optional regex filter to keep frames (applied before prefix)");
+  app.add_option("-s,--frame-substitution", config.substitutions)
+      ->description("apply substitution to frames (match and substituion are separated by :)");
+  app.add_flag("--filter-tf", config.filter_dynamic, "enable filtering /tf in addition to /tf_static");
 }
 
 void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
                         rosbag2_transport::PlayOptions& options,
                         const rclcpp::Logger* logger) {
-  remapper_ = std::make_unique<FrameRemapper>(config.transforms(logger));
+  remapper_ = std::make_unique<FrameRemapper>(config, logger);
 
   BagTopicChecker checker(options);
   if (config.filter_dynamic && checker.passes("/tf")) {
