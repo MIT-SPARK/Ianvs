@@ -188,7 +188,8 @@ void TFPlugin::add_options(CLI::App& app) {
       ->description("optional regex filter to keep frames (applied before prefix)");
   app.add_option("-s,--frame-substitution", config.substitutions)
       ->description("apply substitution to frames (match and substituion are separated by :)");
-  app.add_flag("--filter-tf", config.filter_dynamic, "enable filtering /tf in addition to /tf_static");
+  app.add_flag(
+      "--filter-tf", config.filter_dynamic, "enable filtering /tf in addition to /tf_static");
 }
 
 void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
