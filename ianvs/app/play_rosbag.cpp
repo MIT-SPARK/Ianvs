@@ -79,8 +79,6 @@ class BagWrapper : public rclcpp::Node {
   bool running;
 
  private:
-  bool preprocess_bag(const rosbag2_storage::StorageOptions& opts);
-
   PluginVec plugins_;
   pluginlib::ClassLoader<ianvs::RosbagPlayPlugin> loader_;
   std::shared_ptr<rosbag2_transport::Player> player_;
@@ -110,6 +108,7 @@ BagWrapper::~BagWrapper() {
 bool BagWrapper::start(const std::filesystem::path& bag_path,
                        rosbag2_transport::PlayOptions play_options,
                        rclcpp::Executor& executor) {
+  using rosbag2_transport::Player;
   using namespace std::chrono_literals;
   if (!std::filesystem::exists(bag_path)) {
     return false;
@@ -117,32 +116,33 @@ bool BagWrapper::start(const std::filesystem::path& bag_path,
 
   rosbag2_storage::StorageOptions storage_opts;
   storage_opts.uri = bag_path;
-  if (!preprocess_bag(storage_opts)) {
+  auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(storage_opts);
+  if (!reader) {
     return false;
   }
 
+  reader->open(storage_opts);
+  const auto logger = get_logger();
   for (const auto& plugin : plugins_) {
-    plugin->modify_playback(play_options);
+    plugin->on_start(*reader, play_options, &logger);
   }
-
-  running = true;
 
   YAML::Node play_node;
   play_node["play_options"] = play_options;
   RCLCPP_DEBUG_STREAM(get_logger(), play_node);
 
+  running = true;
   auto node_opts = rclcpp::NodeOptions().use_intra_process_comms(true);
-  player_.reset(
-      new rosbag2_transport::Player(storage_opts, play_options, "rosbag2_player", node_opts));
+  player_.reset(new Player(storage_opts, play_options, "rosbag2_player", node_opts));
   player_->play();
   executor.add_node(player_);
+
   auto timer_callback = [this]() -> void {
     if (player_ && player_->wait_for_playback_to_finish(1ms)) {
       running = false;
       timer_->cancel();
     }
   };
-
   timer_ = this->create_wall_timer(10ms, timer_callback);
   return true;
 }
@@ -178,21 +178,6 @@ void BagWrapper::cleanup(rclcpp::Executor& executor) {
   }
 
   plugins_.clear();
-}
-
-bool BagWrapper::preprocess_bag(const rosbag2_storage::StorageOptions& opts) {
-  auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(opts);
-  if (!reader) {
-    return false;
-  }
-
-  const auto logger = get_logger();
-  reader->open(opts);
-  for (const auto& plugin : plugins_) {
-    plugin->on_start(*reader, &logger);
-  }
-
-  return true;
 }
 
 struct AppArgs {

@@ -1,5 +1,3 @@
-#include <map>
-
 #include <std_srvs/srv/empty.hpp>
 
 #include "ianvs/app/rosbag_play_plugins.h"
@@ -13,7 +11,9 @@ class SignalStopPlugin : public RosbagPlayPlugin {
 
   void init(std::shared_ptr<rclcpp::Node> node) override;
   void add_options(CLI::App& app) override;
-  void on_start(rosbag2_cpp::Reader&, const rclcpp::Logger*) override;
+  void on_start(rosbag2_cpp::Reader&,
+                rosbag2_transport::PlayOptions&,
+                const rclcpp::Logger*) override {}
   void on_stop() override;
 
  private:
@@ -22,13 +22,9 @@ class SignalStopPlugin : public RosbagPlayPlugin {
   std::vector<rclcpp::Client<std_srvs::srv::Empty>::SharedPtr> clients_;
 };
 
-void SignalStopPlugin::init(std::shared_ptr<rclcpp::Node> node) { node_ = node; }
-
-void SignalStopPlugin::on_start(rosbag2_cpp::Reader&, const rclcpp::Logger* logger) {
+void SignalStopPlugin::init(std::shared_ptr<rclcpp::Node> node) {
+  node_ = node;
   if (!node_) {
-    if (logger) {
-      RCLCPP_ERROR(*logger, "Node not initialized!");
-    }
     return;
   }
 

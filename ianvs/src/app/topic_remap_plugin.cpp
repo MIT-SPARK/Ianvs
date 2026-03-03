@@ -1,6 +1,3 @@
-
-#include <map>
-
 #include <rosbag2_transport/reader_writer_factory.hpp>
 
 #include "ianvs/app/rosbag_play_plugins.h"
@@ -9,6 +6,7 @@
 namespace ianvs {
 
 using detail::StringTransform;
+using ArgVec = std::vector<std::string>;
 
 class TopicRemapPlugin : public RosbagPlayPlugin {
  public:
@@ -16,14 +14,14 @@ class TopicRemapPlugin : public RosbagPlayPlugin {
 
   void init(std::shared_ptr<rclcpp::Node>) override {}
   void add_options(CLI::App& app) override;
-  void modify_playback(rosbag2_transport::PlayOptions& options) override;
-  void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) override;
+  void on_start(rosbag2_cpp::Reader& reader,
+                rosbag2_transport::PlayOptions& options,
+                const rclcpp::Logger* logger = nullptr) override;
   void on_stop() override {}
 
  private:
   std::string prefix;
   std::vector<std::string> remaps;
-  std::vector<std::string> bag_args;
 };
 
 TopicRemapPlugin::TopicRemapPlugin() {}
@@ -34,14 +32,9 @@ void TopicRemapPlugin::add_options(CLI::App& app) {
   app.add_option("--topic-prefix", prefix)->description("Remap topics to have new prefix");
 }
 
-using ArgVec = std::vector<std::string>;
-
-void TopicRemapPlugin::modify_playback(rosbag2_transport::PlayOptions& options) {
-  options.topic_remapping_options.insert(
-      options.topic_remapping_options.end(), bag_args.begin(), bag_args.end());
-}
-
-void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger) {
+void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader,
+                                rosbag2_transport::PlayOptions& options,
+                                const rclcpp::Logger* logger) {
   std::vector<StringTransform> transforms;
   for (const auto& sub : remaps) {
     transforms.push_back(StringTransform::from_arg(StringTransform::Type::Substitute, sub, logger));
@@ -52,7 +45,6 @@ void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logge
   }
 
   const auto all_topics = reader.get_all_topics_and_types();
-
   for (const auto& data : all_topics) {
     auto topic = data.name;
     for (const auto& transform : transforms) {
@@ -63,8 +55,8 @@ void TopicRemapPlugin::on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logge
       continue;
     }
 
-    bag_args.push_back("-r");
-    bag_args.push_back(data.name + ":=" + topic);
+    options.topic_remapping_options.push_back("-r");
+    options.topic_remapping_options.push_back(data.name + ":=" + topic);
     if (logger) {
       RCLCPP_INFO_STREAM(*logger, "Remapping '" << data.name << "' -> '" << topic << "'");
     }

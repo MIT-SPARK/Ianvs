@@ -52,11 +52,10 @@ class RosbagPlayPlugin {
   //! @brief Add CLI options to executable
   virtual void add_options(CLI::App& /* app */) {}
 
-  //! @brief Change playback options depending on plugin requiements
-  virtual void modify_playback(rosbag2_transport::PlayOptions& /* options */) {}
-
-  //! @brief Callback event to run before the bag starts
-  virtual void on_start(rosbag2_cpp::Reader& reader, const rclcpp::Logger* logger = nullptr) = 0;
+  //! @brief Preprocess the bag, optionally changing the playback, and start the plugin
+  virtual void on_start(rosbag2_cpp::Reader& reader,
+                        rosbag2_transport::PlayOptions& options,
+                        const rclcpp::Logger* logger = nullptr) = 0;
 
   //! @brief Callback event to run after the bag stops
   virtual void on_stop() = 0;

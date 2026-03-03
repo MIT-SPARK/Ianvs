@@ -37,7 +37,13 @@ find_package(yaml-cpp REQUIRED)
 find_package(Python COMPONENTS Interpreter Development)
 find_package(pybind11 CONFIG REQUIRED)
 
-# core library for use downstream
+add_library(ament_shim INTERFACE)
+ament_target_dependencies(ament_shim INTERFACE tf2_msgs tf2_ros)
+
+#######################################################################################
+# Libraries
+#######################################################################################
+
 add_library(
   ${PROJECT_NAME}
   src/detail/string_transforms.cpp
@@ -50,7 +56,10 @@ add_library(
 )
 add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_link_libraries(
-  ${PROJECT_NAME} PUBLIC CLI11::CLI11 message_filters::message_filters rclcpp::rclcpp
+  ${PROJECT_NAME}
+  PUBLIC CLI11::CLI11
+         message_filters::message_filters
+         rclcpp::rclcpp
 )
 target_include_directories(
   ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -62,10 +71,10 @@ if(NOT BUILD_SHARED_LIBS)
   set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
 
-add_library(ament_shim INTERFACE)
-ament_target_dependencies(ament_shim INTERFACE tf2_msgs tf2_ros)
-
-add_library(${PROJECT_NAME}_rosbag src/bag_reader.cpp)
+add_library(${PROJECT_NAME}_rosbag
+  src/detail/bag_topic_checker.cpp
+  src/bag_reader.cpp
+)
 add_library(ianvs::${PROJECT_NAME}_rosbag ALIAS ${PROJECT_NAME}_rosbag)
 target_link_libraries(
   ${PROJECT_NAME}_rosbag PUBLIC rosbag2_transport::rosbag2_transport rclcpp::rclcpp
@@ -80,24 +89,26 @@ endif()
 
 # various plugins for executables to load
 add_library(
-  ${PROJECT_NAME}_plugins SHARED src/app/signal_stop_plugin.cpp src/app/tf_plugin.cpp
-                                 src/app/topic_remap_plugin.cpp
+  ${PROJECT_NAME}_plugins SHARED
+  src/app/signal_stop_plugin.cpp
+  src/app/tf_plugin.cpp
+  src/app/topic_remap_plugin.cpp
 )
 target_link_libraries(
-  ${PROJECT_NAME}_plugins PUBLIC ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
+  ${PROJECT_NAME}_plugins
+  PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag
   PRIVATE ament_shim
 )
 
-# executables
+#######################################################################################
+# Executables
+#######################################################################################
+
 add_executable(play_rosbag app/play_rosbag.cpp)
-target_link_libraries(
-  play_rosbag PRIVATE ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
-)
+target_link_libraries(play_rosbag PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
 
 add_executable(merge_rosbags app/merge_rosbags.cpp)
-target_link_libraries(
-  merge_rosbags PRIVATE ${PROJECT_NAME} rosbag2_transport::rosbag2_transport
-)
+target_link_libraries(merge_rosbags PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
 
 add_executable(transform_file_broadcaster app/transform_file_broadcaster.cpp)
 ament_target_dependencies(transform_file_broadcaster PUBLIC tf2_ros rclcpp)
@@ -107,8 +118,14 @@ add_executable(transform_file_lookup app/transform_file_lookup.cpp)
 ament_target_dependencies(transform_file_lookup PUBLIC tf2)
 target_link_libraries(transform_file_lookup PUBLIC yaml-cpp::yaml-cpp)
 
+#######################################################################################
+# Bindings
+#######################################################################################
+
 pybind11_add_module(
-  _${PROJECT_NAME}_bindings src/bindings/image_encodings.cpp src/bindings/module.cpp
+  _${PROJECT_NAME}_bindings
+  src/bindings/image_encodings.cpp
+  src/bindings/module.cpp
 )
 target_include_directories(
   _${PROJECT_NAME}_bindings
@@ -116,6 +133,20 @@ target_include_directories(
          $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 ament_target_dependencies(_${PROJECT_NAME}_bindings PUBLIC sensor_msgs)
+
+#######################################################################################
+# Testing
+#######################################################################################
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(${PROJECT_NAME}_test test/main.cpp test/test_bag_topic_checker.cpp)
+  target_link_libraries(${PROJECT_NAME}_test ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
+endif()
+
+#######################################################################################
+# Installation
+#######################################################################################
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
