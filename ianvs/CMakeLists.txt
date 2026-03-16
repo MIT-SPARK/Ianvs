@@ -15,10 +15,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
 endif()
 
-if(NOT CMAKE_INTERPROCEDURAL_OPTIMIZATION)
-  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON CACHE STRING "Turn on -flto" FORCE)
-endif()
-
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 
 find_package(ament_cmake REQUIRED)
@@ -54,38 +50,29 @@ add_library(
   src/node_init.cpp
   src/spin_functions.cpp
 )
-add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+target_include_directories(
+  ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                         $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
 target_link_libraries(
   ${PROJECT_NAME}
   PUBLIC CLI11::CLI11
          message_filters::message_filters
          rclcpp::rclcpp
 )
-target_include_directories(
-  ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-                         $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
-)
-target_compile_definitions(${PROJECT_NAME} PRIVATE "${PROJECT_NAME}_BUILDING_LIBRARY")
 ament_target_dependencies(${PROJECT_NAME} PUBLIC sensor_msgs std_srvs)
-if(NOT BUILD_SHARED_LIBS)
-  set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
-endif()
 
 add_library(${PROJECT_NAME}_rosbag
   src/detail/bag_topic_checker.cpp
   src/bag_reader.cpp
 )
-add_library(ianvs::${PROJECT_NAME}_rosbag ALIAS ${PROJECT_NAME}_rosbag)
-target_link_libraries(
-  ${PROJECT_NAME}_rosbag PUBLIC rosbag2_transport::rosbag2_transport rclcpp::rclcpp
-)
 target_include_directories(
   ${PROJECT_NAME}_rosbag PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                                 $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
-if(NOT BUILD_SHARED_LIBS)
-  set_property(TARGET ${PROJECT_NAME}_rosbag PROPERTY POSITION_INDEPENDENT_CODE ON)
-endif()
+target_link_libraries(
+  ${PROJECT_NAME}_rosbag PUBLIC rosbag2_transport::rosbag2_transport rclcpp::rclcpp
+)
 
 # various plugins for executables to load
 add_library(
@@ -99,6 +86,13 @@ target_link_libraries(
   PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag
   PRIVATE ament_shim
 )
+
+add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+add_library(ianvs::${PROJECT_NAME}_rosbag ALIAS ${PROJECT_NAME}_rosbag)
+if(NOT BUILD_SHARED_LIBS)
+  set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
+  set_property(TARGET ${PROJECT_NAME}_rosbag PROPERTY POSITION_INDEPENDENT_CODE ON)
+endif()
 
 #######################################################################################
 # Executables
@@ -133,6 +127,12 @@ target_include_directories(
          $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 ament_target_dependencies(_${PROJECT_NAME}_bindings PUBLIC sensor_msgs)
+
+include(CheckIPOSupported)
+check_ipo_supported(RESULT IPO_SUPPORTED)
+if(IPO_SUPPORTED)
+  set_property(TARGET _${PROJECT_NAME}_bindings PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
 
 #######################################################################################
 # Testing
