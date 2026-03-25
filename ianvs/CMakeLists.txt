@@ -98,11 +98,15 @@ endif()
 # Executables
 #######################################################################################
 
-add_executable(play_rosbag app/play_rosbag.cpp)
-target_link_libraries(play_rosbag PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
+add_executable(csv_to_tf app/csv_to_tf.cpp)
+ament_target_dependencies(csv_to_tf PUBLIC tf2_ros)
+target_link_libraries(csv_to_tf PUBLIC ${PROJECT_NAME})
 
 add_executable(merge_rosbags app/merge_rosbags.cpp)
 target_link_libraries(merge_rosbags PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
+
+add_executable(play_rosbag app/play_rosbag.cpp)
+target_link_libraries(play_rosbag PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
 
 add_executable(transform_file_broadcaster app/transform_file_broadcaster.cpp)
 ament_target_dependencies(transform_file_broadcaster PUBLIC tf2_ros rclcpp)
