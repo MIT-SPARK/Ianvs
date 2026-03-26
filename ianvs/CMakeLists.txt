@@ -157,8 +157,9 @@ install(
   TARGETS ${PROJECT_NAME}
           ${PROJECT_NAME}_plugins
           ${PROJECT_NAME}_rosbag
-          play_rosbag
+          csv_to_tf
           merge_rosbags
+          play_rosbag
           transform_file_broadcaster
           transform_file_lookup
   EXPORT ${PROJECT_NAME}-exports

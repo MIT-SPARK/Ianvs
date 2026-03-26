@@ -61,7 +61,7 @@ void CsvToTfNode::callback() {
   const auto prev_idx = idx_;
   while (curr_tf_is_stale(stamp)) {
     const auto curr_ns = get_curr_tf_stamp().nanoseconds();
-    RCLCPP_INFO_STREAM(logger, "Dropping " << curr_ns << " [ns] @ " << stamp_ns << " [ns]");
+    RCLCPP_DEBUG_STREAM(logger, "Dropping " << curr_ns << " [ns] @ " << stamp_ns << " [ns]");
     ++idx_;
   }
 
@@ -85,7 +85,7 @@ void CsvToTfNode::callback() {
     return;
   }
 
-  RCLCPP_INFO_STREAM(logger, "sending " << next_ns << " [ns] @ " << stamp_ns << " [ns]");
+  RCLCPP_DEBUG_STREAM(logger, "Sending " << next_ns << " [ns] @ " << stamp_ns << " [ns]");
   auto msg = transforms_[idx_];
   msg.header.stamp = next_stamp;
   broadcaster_->sendTransform(msg);
@@ -168,7 +168,7 @@ TransformStamped ParseOptions::parse_line(const std::string& line) const {
 
 std::vector<TransformStamped> ParseOptions::parse() const {
   std::ifstream file(filepath);
-  if (!file.is_open()) {
+  if (!file) {
     return {};
   }
 
