@@ -132,7 +132,7 @@ void ParseOptions::add_args(CLI::App& app) {
   app.add_option("--child", child, "Frame ID for child frame")->default_val("base_link");
   app.add_option("--origin", origin, "Origin offset")->expected(3);
   app.add_option("--order", parse_order, "Column order")->expected(7);
-  app.add_flag("--skip-first", skip_first, "Parse first line as data");
+  app.add_flag("--skip-first/!--no-skip-first", skip_first, "Parse first line as data");
 }
 
 TransformStamped ParseOptions::parse_line(const std::string& line) const {
