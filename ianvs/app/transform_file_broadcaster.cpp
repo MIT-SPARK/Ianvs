@@ -28,6 +28,7 @@ class TransformFileBroadcaster : public rclcpp::Node {
     const auto stamp = now();
     std::vector<geometry_msgs::msg::TransformStamped> transforms;
 
+    RCLCPP_INFO_STREAM(get_logger(), "Loading transforms from " << transform_file);
     try {
       const auto node = YAML::LoadFile(transform_file);
       for (const auto& tf : node["frames"]) {

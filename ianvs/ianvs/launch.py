@@ -1,10 +1,14 @@
 import pathlib
+import tempfile
+
 from typing import Optional, Sequence, Text
 from launch.launch_context import LaunchContext
-from launch.frontend import expose_action, Entity, Parser
+from launch.frontend import expose_action, expose_substitution, Entity, Parser
+from launch.frontend.parse_substitution import parse_substitution
 from launch_ros.actions import Node
 from launch.some_substitutions_type import SomeSubstitutionsType
 from launch.substitution import Substitution
+from launch.substitutions import SubstitutionFailure
 from launch.utilities import perform_substitutions, normalize_to_list_of_substitutions
 
 
@@ -40,7 +44,7 @@ class PyenvPrefix(Substitution):
         if pyenv:
             pyinterp = pathlib.Path(pyenv) / "bin" / "python"
             if not pyinterp.exists():
-                raise ValueError(f"Interperter '{pyinterp}' not found for venv '{pyenv}'")
+                raise ValueError(f"Interperter '{pyinterp}' not found for '{pyenv}'")
         else:
             pyinterp = ""
 
@@ -65,3 +69,45 @@ class CustomNode(Node):
         env = parser.parse_substitution(entity.get_attr("pyenv", optional=False))
         kwargs["pyenv"] = env
         return cls, kwargs
+
+
+@expose_substitution("subs-file")
+class RenderFileSubstitution(Substitution):
+    """Custom substitution for performing substitutions on file contents."""
+
+    def __init__(self, path: SomeSubstitutionsType):
+        super().__init__()
+        self.path = normalize_to_list_of_substitutions(path)
+        self._new_file = None
+
+    @classmethod
+    def parse(cls, data: Sequence[SomeSubstitutionsType]):
+        if not data or len(data) != 1:
+            raise AttributeError("Path required for file rendering substitution")
+
+        return cls, {"path": data[0]}
+
+    def describe(self) -> Text:
+        path_repr = " + ".join([s.describe() for s in self.path])
+        return f"RenderFile(path={path_repr})"
+
+    def perform(self, context: LaunchContext) -> Text:
+        path = perform_substitutions(context, self.path)
+        path = pathlib.Path(path).expanduser().absolute()
+        if not path.exists():
+            raise SubstitutionFailure(f"File '{path}' does not exist!")
+
+        with path.open("r") as fin:
+            contents = fin.read()
+
+        contents = parse_substitution(contents)
+        contents = perform_substitutions(context, contents)
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as fout:
+            self._new_file = pathlib.Path(fout.name)
+            fout.write(contents)
+
+        return str(self._new_file)
+
+    def __del__(self):
+        if self._new_file:
+            self._new_file.unlink()
