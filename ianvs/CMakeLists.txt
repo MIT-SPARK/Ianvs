@@ -43,6 +43,7 @@ ament_target_dependencies(ament_shim INTERFACE tf2_msgs tf2_ros)
 add_library(
   ${PROJECT_NAME}
   src/detail/string_transforms.cpp
+  src/detail/frame_remapper.cpp
   src/image_publisher.cpp
   src/image_subscription.cpp
   src/node_handle.cpp
@@ -60,7 +61,7 @@ target_link_libraries(
          message_filters::message_filters
          rclcpp::rclcpp
 )
-ament_target_dependencies(${PROJECT_NAME} PUBLIC sensor_msgs std_srvs)
+ament_target_dependencies(${PROJECT_NAME} PUBLIC sensor_msgs std_srvs tf2_msgs)
 
 add_library(${PROJECT_NAME}_rosbag
   src/detail/bag_topic_checker.cpp
@@ -107,6 +108,9 @@ target_link_libraries(merge_rosbags PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosba
 
 add_executable(play_rosbag app/play_rosbag.cpp)
 target_link_libraries(play_rosbag PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
+
+add_executable(static_tfs_from_bag app/static_tfs_from_bag.cpp)
+target_link_libraries(static_tfs_from_bag PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
 
 add_executable(transform_file_broadcaster app/transform_file_broadcaster.cpp)
 ament_target_dependencies(transform_file_broadcaster PUBLIC tf2_ros rclcpp)
@@ -160,6 +164,7 @@ install(
           csv_to_tf
           merge_rosbags
           play_rosbag
+          static_tfs_from_bag
           transform_file_broadcaster
           transform_file_lookup
   EXPORT ${PROJECT_NAME}-exports
