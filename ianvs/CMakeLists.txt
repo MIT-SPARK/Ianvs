@@ -110,7 +110,10 @@ add_executable(play_rosbag app/play_rosbag.cpp)
 target_link_libraries(play_rosbag PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
 
 add_executable(static_tfs_from_bag app/static_tfs_from_bag.cpp)
-target_link_libraries(static_tfs_from_bag PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
+target_link_libraries(
+  static_tfs_from_bag
+  PUBLIC ${PROJECT_NAME} ${PROJECT_NAME}_rosbag yaml-cpp::yaml-cpp
+)
 
 add_executable(transform_file_broadcaster app/transform_file_broadcaster.cpp)
 ament_target_dependencies(transform_file_broadcaster PUBLIC tf2_ros rclcpp)

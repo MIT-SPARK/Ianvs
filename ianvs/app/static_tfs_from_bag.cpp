@@ -1,3 +1,5 @@
+#include <yaml-cpp/yaml.h>
+
 #include <filesystem>
 
 #include <CLI/CLI.hpp>
@@ -6,21 +8,30 @@
 #include <rosbag2_transport/reader_writer_factory.hpp>
 #include <tf2_msgs/msg/tf_message.hpp>
 
-#include "ianvs/app/rosbag_play_plugins.h"
 #include "ianvs/detail/frame_remapper.h"
-
-using namespace std::chrono_literals;
-using PluginVec = std::vector<std::shared_ptr<ianvs::RosbagPlayPlugin>>;
 
 struct AppArgs {
   void add_to_app(CLI::App& app);
 
   std::filesystem::path bag;
+  std::filesystem::path output;
   ianvs::FrameRemapper::Config remapper;
 };
 
 void AppArgs::add_to_app(CLI::App& app) {
   app.add_option("bag_path", bag)->required()->check(CLI::ExistingPath)->description("Bag to open");
+  app.add_option("-o,--output", output);
+  app.add_option("-p,--prefix-frames", remapper.prefix)
+      ->take_last()
+      ->description("prefix to apply to ALL frames");
+  app.add_option("-f,--filter-frames", remapper.filter)
+      ->join('|')
+      ->description("optional regex filter to drop frames (applied before prefix)");
+  app.add_option("-k,--keep-frames", remapper.keep)
+      ->join('|')
+      ->description("optional regex filter to keep frames (applied before prefix)");
+  app.add_option("-s,--frame-substitution", remapper.substitutions)
+      ->description("apply substitution to frames (match and substituion are separated by :)");
 }
 
 int main(int argc, char** argv) {
@@ -37,6 +48,7 @@ int main(int argc, char** argv) {
     return app.exit(e);
   }
 
+  args.bag = std::filesystem::canonical(args.bag);
   rosbag2_storage::StorageOptions storage_opts;
   storage_opts.uri = args.bag;
   auto reader = rosbag2_transport::ReaderWriterFactory::make_reader(storage_opts);
@@ -61,5 +73,30 @@ int main(int argc, char** argv) {
     remapper.updatePoseMap(*tf_msg, pose_map);
   }
 
+  YAML::Node root;
+  for (const auto& [parent, children] : pose_map) {
+    for (const auto& [child, pose] : children) {
+      YAML::Node tf;
+      tf["frame_id"] = parent;
+      tf["child_frame_id"] = child;
+      tf["x"] = pose.transform.translation.x;
+      tf["y"] = pose.transform.translation.y;
+      tf["z"] = pose.transform.translation.z;
+      tf["qw"] = pose.transform.rotation.w;
+      tf["qx"] = pose.transform.rotation.x;
+      tf["qy"] = pose.transform.rotation.y;
+      tf["qz"] = pose.transform.rotation.z;
+      root["frames"].push_back(tf);
+    }
+  }
+
+  std::filesystem::path output = args.output;
+  if (output.empty()) {
+    output = args.bag.parent_path() / (args.bag.stem().string() + "_static_tfs.yaml");
+  }
+
+  std::cout << "Saving " << root["frames"].size() << "transforms to " << output << std::endl;
+  std::ofstream fout(output);
+  fout << root;
   return 0;
 }
