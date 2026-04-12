@@ -32,6 +32,14 @@ void AppArgs::add_to_app(CLI::App& app) {
       ->description("optional regex filter to keep frames (applied before prefix)");
   app.add_option("-s,--frame-substitution", remapper.substitutions)
       ->description("apply substitution to frames (match and substituion are separated by :)");
+  app.footer(R"(
+Both --filter-frames and --keep-frames support two match modes for a given
+TF. They can either be provided with a single regex that can match either
+the parent or the child frame OR they can be provided with two regexes in
+the form <PARENT_REGEX>:<CHILD_REGEX>, which requires that the parent frame
+matches the first regex and the child frame matches the second regex. This
+precludes the use of non-captured groups in the regex
+)");
 }
 
 int main(int argc, char** argv) {

@@ -52,19 +52,31 @@ void TFPlugin::init(std::shared_ptr<rclcpp::Node> node) {
 }
 
 void TFPlugin::add_options(CLI::App& app) {
+  const auto group_name = "TF Options";
   app.add_option("-p,--prefix-frames", config.prefix)
       ->take_last()
-      ->description("prefix to apply to ALL frames");
+      ->description("prefix to apply to ALL frames")
+      ->group(group_name);
   app.add_option("-f,--filter-frames", config.filter)
-      ->join('|')
-      ->description("optional regex filter to drop frames (applied before prefix)");
+      ->description("optional regex filter to drop frames (applied before prefix)")
+      ->group(group_name);
   app.add_option("-k,--keep-frames", config.keep)
-      ->join('|')
-      ->description("optional regex filter to keep frames (applied before prefix)");
+      ->description("optional regex filter to keep frames (applied before prefix)")
+      ->group(group_name);
   app.add_option("-s,--frame-substitution", config.substitutions)
-      ->description("apply substitution to frames (match and substituion are separated by :)");
+      ->description("apply substitution to frames (match and substituion are separated by :)")
+      ->group(group_name);
   app.add_flag(
-      "--filter-tf", config.filter_dynamic, "enable filtering /tf in addition to /tf_static");
+         "--filter-tf", config.filter_dynamic, "enable filtering /tf in addition to /tf_static")
+      ->group(group_name);
+  app.footer(R"(
+Both --filter-frames and --keep-frames support two match modes for a given
+TF. They can either be provided with a single regex that can match either
+the parent or the child frame OR they can be provided with two regexes in
+the form <PARENT_REGEX>:<CHILD_REGEX>, which requires that the parent frame
+matches the first regex and the child frame matches the second regex. This
+precludes the use of non-captured groups in the regex
+)");
 }
 
 void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
