@@ -153,7 +153,7 @@ typename NodeHandle::Subscription<T> NodeHandle::create_subscription(const std::
                                                                      Cls* class_pointer,
                                                                      GroupPtr group) {
   return create_subscription<T>(
-      topic, qos, std::bind(callback, class_pointer, std::placeholders::_1));
+      topic, qos, std::bind(callback, class_pointer, std::placeholders::_1), group);
 }
 
 template <typename T, typename CallbackT>

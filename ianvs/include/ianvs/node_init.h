@@ -29,7 +29,7 @@ struct NodeGuard {
   ~NodeGuard();
 };
 
-IANVS_PUBLIC [[nodiscard]] NodeGuard init_node(int& argc,
+[[nodiscard]] IANVS_PUBLIC NodeGuard init_node(int& argc,
                                                char** argv,
                                                const std::string& node_name);
 
