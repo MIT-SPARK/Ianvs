@@ -46,6 +46,8 @@ namespace ianvs {
 
 class RosbagPlayPlugin {
  public:
+  virtual ~RosbagPlayPlugin() = default;
+
   //! @brief Initialize plugin
   virtual void init(std::shared_ptr<rclcpp::Node> node) = 0;
 
