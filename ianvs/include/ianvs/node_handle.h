@@ -120,6 +120,10 @@ class NodeHandle {
     return node_.get<rclcpp::node_interfaces::NodeClockInterface>()->get_clock();
   }
 
+  rclcpp::Clock::ConstSharedPtr clock() const {
+    return node_.get<rclcpp::node_interfaces::NodeClockInterface>()->get_clock();
+  }
+
  private:
   NodeInterface node_;
   std::string ns_;
