@@ -20,6 +20,8 @@
   <depend>tf2_ros</depend>
   <depend>pybind11-dev</depend>
   <depend>yaml-cpp</depend>
+  <depend>python3-imageio</depend>
+  <depend>python3-tqdm</depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
