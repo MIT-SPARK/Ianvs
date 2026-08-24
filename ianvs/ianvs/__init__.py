@@ -1,26 +1,18 @@
 from ianvs._ianvs_bindings import parse_encoding
-import sensor_msgs.msg
-from typing import Optional
+from sensor_msgs.msg import Image, CompressedImage
 import numpy as np
 
-import imageio.v3
 
-
-def get_image(msg: sensor_msgs.msg.Image) -> Optional[np.ndarray]:
+def get_image(msg: Image | CompressedImage) -> np.ndarray | None:
     """Return appropriate image from message if possible."""
+    if isinstance(msg, CompressedImage):
+        import imageio.v3
+
+        return imageio.v3.imread(msg.data.tobytes())
+
     info = parse_encoding(msg.encoding)
     if info is None:
         return None
 
     shape = (msg.height, msg.width, info.channels)
     return np.squeeze(np.frombuffer(msg.data, dtype=info.dtype_str).reshape(shape))
-
-
-def _parse_image(msg):
-    if msg is None:
-        return None
-
-    if "CompressedImage" in type(msg).__name__:
-        return imageio.v3.imread(msg.data.tobytes())
-
-    return get_image(msg)
