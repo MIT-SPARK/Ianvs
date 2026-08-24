@@ -1,6 +1,8 @@
 import heapq
 import itertools
 import functools
+from dataclasses import dataclass, field
+from typing import Any
 
 import tqdm
 import tf2_ros
@@ -12,17 +14,30 @@ from rosidl_runtime_py.utilities import get_message
 
 
 def _all_nonempty(queues):
-    status = [bool(q) for q in queues]
+    status = [bool(q) for _, q in queues.items()]
     return functools.reduce(lambda x, y: x and y, status, True)
+
+
+def _get_stamp(msg, bag_stamp_ns):
+    if not hasattr(msg, "header"):
+        return bag_stamp_ns
+
+    return int(msg.header.stamp.sec * 1.0e9) + msg.header.stamp.nanosec
 
 
 def _valid_set(stamps, max_diff_ns):
     for lhs, rhs in itertools.combinations(stamps.items(), 2):
         diff_ns = abs(lhs[1] - rhs[1])
-        if diff_ns >= max_diff_ns:
+        if diff_ns > max_diff_ns:
             return False
 
     return True
+
+
+@dataclass(order=True)
+class _MsgEntry:
+    stamp_ns: int
+    msg: Any = field(compare=False)
 
 
 class ProgressTracker:
@@ -158,13 +173,18 @@ class BagReader:
                     continue
 
                 msg = deserialize_message(data, self._typenames[topic])
-                heapq.heappush(queue, msg)
+                msg_stamp = _get_stamp(msg, t)
+                heapq.heappush(queue, _MsgEntry(msg_stamp, msg))
 
                 while _all_nonempty(queues):
-                    stamps = {t: q[0] for t, q in queues.items()}
+                    stamps = {t: q[0].stamp_ns for t, q in queues.items()}
                     if not _valid_set(stamps, max_diff_ns):
                         min_topic, _ = min(stamps.items(), key=lambda x: x[1])
-                        queues[min_topic].pop(0)
+                        heapq.heappop(queues[min_topic])
                         continue
 
-                    yield {t: q.pop(0) for t, q in queues.items()}
+                    to_return = {t: q[0].msg for t, q in queues.items()}
+                    for t, q in queues.items():
+                        heapq.heappop(q)
+
+                    yield to_return
