@@ -123,14 +123,14 @@ target_link_libraries(transform_file_lookup PUBLIC yaml-cpp::yaml-cpp CLI11::CLI
 # ######################################################################################
 
 pybind11_add_module(
-  _${PROJECT_NAME}_bindings src/bindings/image_encodings.cpp src/bindings/module.cpp
+  _${PROJECT_NAME}_bindings src/bindings/image_encodings.cpp src/bindings/node_init.cpp src/bindings/module.cpp
 )
 target_include_directories(
   _${PROJECT_NAME}_bindings
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
-ament_target_dependencies(_${PROJECT_NAME}_bindings PUBLIC sensor_msgs)
+target_link_libraries(_${PROJECT_NAME}_bindings PUBLIC ${PROJECT_NAME})
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT IPO_SUPPORTED)
