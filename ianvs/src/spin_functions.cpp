@@ -36,10 +36,12 @@
 
 #include <rclcpp/executors.hpp>
 #include <rclcpp/rate.hpp>
+#include <std_srvs/srv/empty.hpp>
 
 namespace ianvs {
 
 using BaseInterface = std::shared_ptr<rclcpp::node_interfaces::NodeBaseInterface>;
+using std_srvs::srv::Empty;
 
 namespace {
 
@@ -54,18 +56,16 @@ inline void spin_some(const BaseInterface& node, rclcpp::Executor* exec) {
 }  // namespace
 
 struct ShutdownMonitor {
-  explicit ShutdownMonitor(NodeHandle nh)
+  ShutdownMonitor(NodeHandle nh, const std::string& name)
       : should_exit(false),
-        service(nh.create_service<std_srvs::srv::Empty>(
-            "shutdown", &ShutdownMonitor::callback, this)) {}
+        service(nh.create_service<Empty>(name, &ShutdownMonitor::callback, this)) {}
 
-  void callback(const std_srvs::srv::Empty::Request::SharedPtr&,
-                std_srvs::srv::Empty::Response::SharedPtr) {
+  void callback(const Empty::Request::SharedPtr&, Empty::Response::SharedPtr) {
     should_exit = true;
   }
 
   bool should_exit;
-  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr service;
+  rclcpp::Service<Empty>::SharedPtr service;
 };
 
 bool haveClock(NodeHandle nh) {
@@ -73,8 +73,10 @@ bool haveClock(NodeHandle nh) {
   return graph->count_publishers("/clock") > 0;
 }
 
-void spinWhileClockPresent(NodeHandle nh, rclcpp::Executor* executor) {
-  ShutdownMonitor functor(nh);
+void spinWhileClockPresent(NodeHandle nh,
+                           rclcpp::Executor* executor,
+                           const std::string& service_name) {
+  ShutdownMonitor functor(nh, service_name);
 
   rclcpp::WallRate r(50);
   auto base = nh.node().get<rclcpp::node_interfaces::NodeBaseInterface>();
@@ -98,8 +100,10 @@ void spinWhileClockPresent(NodeHandle nh, rclcpp::Executor* executor) {
   RCLCPP_INFO(nh.logger(), "Exiting!");
 }
 
-void spinUntilExitRequested(NodeHandle nh, rclcpp::Executor* executor) {
-  ShutdownMonitor functor(nh);
+void spinUntilExitRequested(NodeHandle nh,
+                            rclcpp::Executor* executor,
+                            const std::string& service_name) {
+  ShutdownMonitor functor(nh, service_name);
 
   rclcpp::WallRate r(50);
   auto base = nh.node().get<rclcpp::node_interfaces::NodeBaseInterface>();
@@ -117,11 +121,14 @@ void spinUntilExitRequested(NodeHandle nh, rclcpp::Executor* executor) {
   RCLCPP_INFO(nh.logger(), "Exiting!");
 }
 
-void spinAndWait(NodeHandle nh, bool exit_after_clock, rclcpp::Executor* executor) {
+void spinAndWait(NodeHandle nh,
+                 bool exit_after_clock,
+                 rclcpp::Executor* executor,
+                 const std::string& service_name) {
   if (exit_after_clock) {
-    spinWhileClockPresent(nh, executor);
+    spinWhileClockPresent(nh, executor, service_name);
   } else {
-    spinUntilExitRequested(nh, executor);
+    spinUntilExitRequested(nh, executor, service_name);
   }
 }
 

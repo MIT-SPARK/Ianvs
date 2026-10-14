@@ -33,18 +33,22 @@
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
 #pragma once
-#include <std_srvs/srv/empty.hpp>
 
 #include "ianvs/node_handle.h"
 
 namespace ianvs {
 
-void spinWhileClockPresent(NodeHandle nh, rclcpp::Executor* executor = nullptr);
+void spinWhileClockPresent(NodeHandle nh,
+                           rclcpp::Executor* executor = nullptr,
+                           const std::string& service_name = "~/shutdown");
 
-void spinUntilExitRequested(NodeHandle nh, rclcpp::Executor* executor = nullptr);
+void spinUntilExitRequested(NodeHandle nh,
+                            rclcpp::Executor* executor = nullptr,
+                            const std::string& service_name = "~/shutdown");
 
 void spinAndWait(NodeHandle nh,
                  bool exit_after_clock = false,
-                 rclcpp::Executor* executor = nullptr);
+                 rclcpp::Executor* executor = nullptr,
+                 const std::string& service_name = "~/shutdown");
 
 }  // namespace ianvs
