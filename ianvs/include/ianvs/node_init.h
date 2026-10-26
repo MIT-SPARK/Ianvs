@@ -27,6 +27,7 @@ class CurrentNode {
 struct NodeGuard {
   NodeGuard() = default;
   ~NodeGuard();
+  void reset();
 };
 
 [[nodiscard]] IANVS_PUBLIC NodeGuard init_node(int& argc,
