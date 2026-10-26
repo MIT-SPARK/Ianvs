@@ -29,6 +29,8 @@ CurrentNode::CurrentNode() {}
 
 NodeGuard::~NodeGuard() { CurrentNode::clear(); }
 
+void NodeGuard::reset() { CurrentNode::clear(); }
+
 NodeGuard init_node(int& argc, char** argv, const std::string& node_name) {
   rclcpp::init(argc, argv);
   CurrentNode::init(std::make_shared<rclcpp::Node>(node_name));

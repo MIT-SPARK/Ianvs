@@ -25,4 +25,5 @@ def get_image(msg: Image | CompressedImage) -> np.ndarray | None:
 def init_node_handle(node_name: str):
     guard = _bindings._NodeInitHolder(node_name)
     yield guard.name
+    guard._exit()
     del guard

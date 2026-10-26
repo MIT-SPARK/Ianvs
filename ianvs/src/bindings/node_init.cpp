@@ -17,6 +17,8 @@ namespace ianvs::bindings::node_init {
 
 struct NodeInitHolder {
   explicit NodeInitHolder(const std::string& name);
+  ~NodeInitHolder();
+  void exit();
 
   NodeGuard guard;
   const std::string name;
@@ -24,10 +26,18 @@ struct NodeInitHolder {
 
 NodeInitHolder::NodeInitHolder(const std::string& _name) : guard(start_node(_name)), name(_name) {}
 
+NodeInitHolder::~NodeInitHolder() { exit(); }
+
+void NodeInitHolder::exit() {
+  guard.reset();
+  rclcpp::shutdown();
+}
+
 void add(py::module_& m) {
   py::class_<NodeInitHolder>(m, "_NodeInitHolder")
       .def(py::init<std::string>())
-      .def_readonly("name", &NodeInitHolder::name);
+      .def_readonly("name", &NodeInitHolder::name)
+      .def("_exit", &NodeInitHolder::exit);
 }
 
 }  // namespace ianvs::bindings::node_init
