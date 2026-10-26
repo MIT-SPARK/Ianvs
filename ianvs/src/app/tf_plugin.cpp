@@ -19,6 +19,8 @@ class TFPlugin : public RosbagPlayPlugin {
  public:
   struct Config : FrameRemapper::Config {
     bool filter_dynamic = false;
+    std::string tf_topic = "/tf";
+    std::string tf_static_topic = "/tf_static";
   } config;
 
   TFPlugin();
@@ -69,6 +71,12 @@ void TFPlugin::add_options(CLI::App& app) {
   app.add_flag(
          "--filter-tf", config.filter_dynamic, "enable filtering /tf in addition to /tf_static")
       ->group(group_name);
+  app.add_option("--tf-topic", config.tf_topic)
+      ->description("TF topic in the bag (e.g. /<robot>/tf); republished filtered on /tf")
+      ->group(group_name);
+  app.add_option("--tf-static-topic", config.tf_static_topic)
+      ->description("static TF topic in the bag; republished filtered on /tf_static")
+      ->group(group_name);
   app.footer(R"(
 Both --filter-frames and --keep-frames support two match modes for a given
 TF. They can either be provided with a single regex that can match either
@@ -85,9 +93,9 @@ void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
   remapper_ = std::make_unique<FrameRemapper>(config, logger);
 
   BagTopicChecker checker(options);
-  if (config.filter_dynamic && checker.passes("/tf")) {
+  if (config.filter_dynamic && checker.passes(config.tf_topic)) {
     options.topic_remapping_options.push_back("--remap");
-    options.topic_remapping_options.push_back("/tf:=" + tf_topic_);
+    options.topic_remapping_options.push_back(config.tf_topic + ":=" + tf_topic_);
     dynamic_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
     sub_ = node_->create_subscription<TFMessage>(
         tf_topic_,
@@ -97,16 +105,16 @@ void TFPlugin::on_start(rosbag2_cpp::Reader& reader,
 
   std::set<std::string> excluded(options.exclude_topics_to_filter.begin(),
                                  options.exclude_topics_to_filter.end());
-  if (!checker.passes("/tf_static")) {
+  if (!checker.passes(config.tf_static_topic)) {
     return;
   }
 
   broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(node_);
-  options.exclude_topics_to_filter.push_back("/tf_static");
+  options.exclude_topics_to_filter.push_back(config.tf_static_topic);
 
   PoseMap pose_map;
   rosbag2_storage::StorageFilter filter;
-  filter.topics = {"/tf_static"};
+  filter.topics = {config.tf_static_topic};
   reader.set_filter(filter);
   while (reader.has_next()) {
     const auto msg = reader.read_next();

@@ -15,12 +15,15 @@ struct AppArgs {
 
   std::filesystem::path bag;
   std::filesystem::path output;
+  std::string tf_static_topic = "/tf_static";
   ianvs::FrameRemapper::Config remapper;
 };
 
 void AppArgs::add_to_app(CLI::App& app) {
   app.add_option("bag_path", bag)->required()->check(CLI::ExistingPath)->description("Bag to open");
   app.add_option("-o,--output", output);
+  app.add_option("--tf-static-topic", tf_static_topic)
+      ->description("static TF topic in the bag (e.g. /<robot>/tf_static)");
   app.add_option("-p,--prefix-frames", remapper.prefix)
       ->take_last()
       ->description("prefix to apply to ALL frames");
@@ -68,7 +71,7 @@ int main(int argc, char** argv) {
   const ianvs::FrameRemapper remapper(args.remapper);
 
   rosbag2_storage::StorageFilter filter;
-  filter.topics = {"/tf_static"};
+  filter.topics = {args.tf_static_topic};
   const rclcpp::Serialization<tf2_msgs::msg::TFMessage> serialization;
 
   reader->open(storage_opts);
