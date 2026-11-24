@@ -34,26 +34,17 @@
  * -------------------------------------------------------------------------- */
 #include "ianvs/spin_functions.h"
 
+#include <chrono>
+#include <memory>
+
 #include <rclcpp/executors.hpp>
-#include <rclcpp/rate.hpp>
+#include <rclcpp/utilities.hpp>
 #include <std_srvs/srv/empty.hpp>
 
 namespace ianvs {
 
-using BaseInterface = std::shared_ptr<rclcpp::node_interfaces::NodeBaseInterface>;
 using std_srvs::srv::Empty;
-
-namespace {
-
-inline void spin_some(const BaseInterface& node, rclcpp::Executor* exec) {
-  if (exec) {
-    exec->spin_node_some(node);
-  } else {
-    rclcpp::spin_some(node);
-  }
-}
-
-}  // namespace
+using namespace std::chrono_literals;
 
 struct ShutdownMonitor {
   ShutdownMonitor(NodeHandle nh, const std::string& name)
@@ -78,23 +69,27 @@ void spinWhileClockPresent(NodeHandle nh,
                            const std::string& service_name) {
   ShutdownMonitor functor(nh, service_name);
 
-  rclcpp::WallRate r(50);
+  auto default_executor =
+      executor ? nullptr : std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
+  auto& exec = executor ? *executor : *default_executor;
   auto base = nh.node().get<rclcpp::node_interfaces::NodeBaseInterface>();
 
   RCLCPP_INFO(nh.logger(), "Waiting for bag to start");
   while (rclcpp::ok() && !haveClock(nh)) {
-    spin_some(base, executor);
-    r.sleep();
+    const auto next_spin = std::chrono::steady_clock::now() + 20ms;
+    exec.spin_node_some(base);
+    rclcpp::sleep_for(next_spin - std::chrono::steady_clock::now());
   }
 
   RCLCPP_INFO(nh.logger(), "Running...");
   while (rclcpp::ok() && haveClock(nh) && !functor.should_exit) {
-    spin_some(base, executor);
-    r.sleep();
+    const auto next_spin = std::chrono::steady_clock::now() + 20ms;
+    exec.spin_node_some(base);
+    rclcpp::sleep_for(next_spin - std::chrono::steady_clock::now());
   }
 
   if (rclcpp::ok()) {
-    spin_some(base, executor);
+    exec.spin_node_some(base);
   }
 
   RCLCPP_INFO(nh.logger(), "Exiting!");
@@ -105,17 +100,20 @@ void spinUntilExitRequested(NodeHandle nh,
                             const std::string& service_name) {
   ShutdownMonitor functor(nh, service_name);
 
-  rclcpp::WallRate r(50);
+  auto default_executor =
+      executor ? nullptr : std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
+  auto& exec = executor ? *executor : *default_executor;
   auto base = nh.node().get<rclcpp::node_interfaces::NodeBaseInterface>();
 
   RCLCPP_INFO(nh.logger(), "Running...");
   while (rclcpp::ok() && !functor.should_exit) {
-    spin_some(base, executor);
-    r.sleep();
+    const auto next_spin = std::chrono::steady_clock::now() + 20ms;
+    exec.spin_node_some(base);
+    rclcpp::sleep_for(next_spin - std::chrono::steady_clock::now());
   }
 
   if (rclcpp::ok()) {
-    spin_some(base, executor);
+    exec.spin_node_some(base);
   }
 
   RCLCPP_INFO(nh.logger(), "Exiting!");

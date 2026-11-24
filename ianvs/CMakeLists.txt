@@ -146,8 +146,13 @@ endif()
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(${PROJECT_NAME}_test test/main.cpp test/test_bag_topic_checker.cpp)
+  find_package(rosgraph_msgs REQUIRED)
+  ament_add_gtest(
+    ${PROJECT_NAME}_test test/main.cpp test/test_bag_topic_checker.cpp
+    test/test_spin_functions.cpp
+  )
   target_link_libraries(${PROJECT_NAME}_test ${PROJECT_NAME} ${PROJECT_NAME}_rosbag)
+  ament_target_dependencies(${PROJECT_NAME}_test rosgraph_msgs)
 endif()
 
 # ######################################################################################
