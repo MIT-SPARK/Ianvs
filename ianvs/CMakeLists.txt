@@ -22,8 +22,10 @@ find_package(CLI11 REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcutils REQUIRED)
 find_package(rosbag2_transport REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(spdlog 1.12 REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_msgs REQUIRED)
@@ -60,6 +62,15 @@ target_link_libraries(
 )
 ament_target_dependencies(${PROJECT_NAME} PUBLIC sensor_msgs std_srvs tf2_msgs)
 
+add_library(${PROJECT_NAME}_spdlog src/ros_log_sink.cpp)
+target_include_directories(
+  ${PROJECT_NAME}_spdlog PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                               $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+target_link_libraries(
+  ${PROJECT_NAME}_spdlog PUBLIC spdlog::spdlog rclcpp::rclcpp PRIVATE rcutils::rcutils
+)
+
 add_library(${PROJECT_NAME}_rosbag src/detail/bag_topic_checker.cpp src/bag_reader.cpp)
 target_include_directories(
   ${PROJECT_NAME}_rosbag PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -80,10 +91,12 @@ target_link_libraries(
 )
 
 add_library(ianvs::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+add_library(ianvs::${PROJECT_NAME}_spdlog ALIAS ${PROJECT_NAME}_spdlog)
 add_library(ianvs::${PROJECT_NAME}_rosbag ALIAS ${PROJECT_NAME}_rosbag)
 if(NOT BUILD_SHARED_LIBS)
   set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
   set_property(TARGET ${PROJECT_NAME}_rosbag PROPERTY POSITION_INDEPENDENT_CODE ON)
+  set_property(TARGET ${PROJECT_NAME}_spdlog PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
 
 # ######################################################################################
@@ -162,6 +175,7 @@ endif()
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME}/)
 install(
   TARGETS ${PROJECT_NAME}
+          ${PROJECT_NAME}_spdlog
           ${PROJECT_NAME}_plugins
           ${PROJECT_NAME}_rosbag
           csv_to_tf
@@ -185,5 +199,5 @@ ament_python_install_package(${PROJECT_NAME})
 
 pluginlib_export_plugin_description_file(ianvs plugins.xml)
 ament_export_targets(${PROJECT_NAME}-exports HAS_LIBRARY_TARGET)
-ament_export_dependencies(message_filters rclcpp sensor_msgs std_srvs)
+ament_export_dependencies(message_filters rclcpp rcutils sensor_msgs spdlog std_srvs)
 ament_package()

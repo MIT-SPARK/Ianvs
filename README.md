@@ -10,8 +10,43 @@ This includes:
 Ianvs is intended to only depend on a very select number of core ROS2 dependencies. These are currently:
 - `message_filters`
 - `rclcpp`
+- `rcutils`
 - `std_srvs`
 - `sensor_msgs`
+
+The spdlog bridge also requires spdlog 1.12 or newer. It is provided by a separate
+target so other ianvs libraries do not inherit spdlog's compile settings.
+
+## Forwarding spdlog to ROS
+
+Link `ianvs::ianvs_spdlog` and call `setRosSink` after initializing ROS:
+
+```cmake
+find_package(ianvs REQUIRED)
+target_link_libraries(my_node PRIVATE ianvs::ianvs_spdlog)
+```
+
+```cpp
+#include <ianvs/ros_log_sink.h>
+#include <rclcpp/rclcpp.hpp>
+
+// After rclcpp::init(argc, argv):
+auto node = std::make_shared<rclcpp::Node>("example");
+ianvs::setRosSink(*spdlog::default_logger(), node->get_logger());
+SPDLOG_INFO("Started");
+```
+
+`setRosSink` flushes and replaces the logger's existing sinks to avoid duplicate
+console output. For applications that manage several destinations, use
+`makeRosSink(node->get_logger())` to obtain a native spdlog sink instead.
+Configure destinations between runs after logging workers stop.
+
+Forwarding uses the node's `spdlog` child logger at ROS DEBUG level, leaving
+spdlog in control of severity without changing the node's own ROS threshold.
+ROS formats each message using its original source filename, line, and function
+as metadata. Directory paths are omitted, and no metadata is added to the message
+text. Set `RCUTILS_CONSOLE_OUTPUT_FORMAT` to
+`[{severity}] [{name}] [{file_name}:{line_number}] {message}` to show the location.
 
 ## Launch File Extensions
 
