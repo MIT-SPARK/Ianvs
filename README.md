@@ -14,12 +14,10 @@ Ianvs is intended to only depend on a very select number of core ROS2 dependenci
 - `std_srvs`
 - `sensor_msgs`
 
-The spdlog bridge also requires spdlog 1.12 or newer. It is provided by a separate
-target so other ianvs libraries do not inherit spdlog's compile settings.
-
 ## Forwarding spdlog to ROS
 
-Link `ianvs::ianvs_spdlog` and call `setRosSink` after initializing ROS:
+Use `ianvs::ianvs_spdlog` to send spdlog messages to ROS. It requires spdlog 1.12
+or newer:
 
 ```cmake
 find_package(ianvs REQUIRED)
@@ -36,17 +34,12 @@ ianvs::setRosSink(*spdlog::default_logger(), node->get_logger());
 SPDLOG_INFO("Started");
 ```
 
-`setRosSink` flushes and replaces the logger's existing sinks to avoid duplicate
-console output. For applications that manage several destinations, use
-`makeRosSink(node->get_logger())` to obtain a native spdlog sink instead.
-Configure destinations between runs after logging workers stop.
+`setRosSink` replaces the logger's existing destinations with ROS output. Use
+`makeRosSink` to combine ROS with other destinations. Configure logging while
+workers are stopped.
 
-Forwarding uses the node's `spdlog` child logger at ROS DEBUG level, leaving
-spdlog in control of severity without changing the node's own ROS threshold.
-ROS formats each message using its original source filename, line, and function
-as metadata. Directory paths are omitted, and no metadata is added to the message
-text. Set `RCUTILS_CONSOLE_OUTPUT_FORMAT` to
-`[{severity}] [{name}] [{file_name}:{line_number}] {message}` to show the location.
+spdlog controls severity and ROS controls formatting. Source locations retain
+the caller's filename and line without directory paths.
 
 ## Launch File Extensions
 

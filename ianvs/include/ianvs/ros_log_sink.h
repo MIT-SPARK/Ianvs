@@ -6,10 +6,10 @@
 
 namespace ianvs {
 
-//! Create a sink that forwards to the ROS logger's spdlog child at DEBUG level
+//! Create a ROS sink to combine with other spdlog destinations
 spdlog::sink_ptr makeRosSink(rclcpp::Logger logger);
 
-//! Flush and replace existing sinks with ROS forwarding; configure between runs
+//! Flush and replace a logger's sinks with ROS output while workers are stopped
 void setRosSink(spdlog::logger& target, rclcpp::Logger logger);
 
 }  // namespace ianvs
