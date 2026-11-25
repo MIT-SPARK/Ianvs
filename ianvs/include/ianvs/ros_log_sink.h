@@ -1,5 +1,6 @@
 #pragma once
 
+#include <spdlog/sinks/sink.h>
 #include <spdlog/spdlog.h>
 
 #include <rclcpp/logger.hpp>
