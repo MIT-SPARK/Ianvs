@@ -10,8 +10,36 @@ This includes:
 Ianvs is intended to only depend on a very select number of core ROS2 dependencies. These are currently:
 - `message_filters`
 - `rclcpp`
+- `rcutils`
 - `std_srvs`
 - `sensor_msgs`
+
+## Forwarding spdlog to ROS
+
+Use `ianvs::ianvs_spdlog` to send spdlog messages to ROS. It requires spdlog 1.12
+or newer:
+
+```cmake
+find_package(ianvs REQUIRED)
+target_link_libraries(my_node PRIVATE ianvs::ianvs_spdlog)
+```
+
+```cpp
+#include <ianvs/ros_log_sink.h>
+#include <rclcpp/rclcpp.hpp>
+
+// After rclcpp::init(argc, argv):
+auto node = std::make_shared<rclcpp::Node>("example");
+ianvs::setRosSink(*spdlog::default_logger(), node->get_logger());
+SPDLOG_INFO("Started");
+```
+
+`setRosSink` replaces the logger's existing destinations with ROS output. Use
+`makeRosSink` to combine ROS with other destinations. Configure logging while
+workers are stopped.
+
+spdlog controls severity and ROS controls formatting. Source locations retain
+the caller's filename and line without directory paths.
 
 ## Launch File Extensions
 
